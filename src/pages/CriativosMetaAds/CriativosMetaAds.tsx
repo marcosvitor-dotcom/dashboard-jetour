@@ -60,7 +60,7 @@ const CriativosMetaAds: React.FC = () => {
   const itemsPerPage = 10
 
   useEffect(() => {
-    if (!apiData?.success || !apiData?.data?.values) return
+    if (!apiData?.success || !apiData?.data?.values || apiData.data.values.length < 2) return
     const headers = apiData.data.values[0]
     const rows = apiData.data.values.slice(1)
 

@@ -11,6 +11,7 @@ import CriativosTikTok from "./pages/CriativosTikTok/CriativosTikTok"
 import CriativosMetaAds from "./pages/CriativosMetaAds/CriativosMetaAds"
 import CriativosGoogleAds from "./pages/CriativosGoogleAds/CriativosGoogleAds"
 import CriativosLinkedIn from "./pages/CriativosLinkedIn/CriativosLinkedin"
+import GoogleSearch from "./pages/GoogleSearch/GoogleSearch"
 import Glossario from "./pages/Glossario/Glossario"
 import AnaliseSemanal from "./pages/AnaliseSemanal/AnaliseSemanal"
 import "./App.css"
@@ -33,6 +34,7 @@ function App() {
             <Route path="/criativos-tiktok" element={<CriativosTikTok />} />
             <Route path="/criativos-google-ads" element={<CriativosGoogleAds />} />
             <Route path="/criativos-linkedin" element={<CriativosLinkedIn />} />
+            <Route path="/google-search" element={<GoogleSearch />} />
             <Route path="/analise-semanal" element={<AnaliseSemanal />} />
             <Route path="/glossario" element={<Glossario />} />
           </Routes>

@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState } from "react"
 import { Link, useLocation } from "react-router-dom"
-import { Home, Clock, Eye, TrendingUp, BarChart3, BookOpenText, Radio, ChevronDown, Share2, ImageIcon, CalendarDays } from "lucide-react"
+import { Home, Clock, Eye, TrendingUp, BarChart3, BookOpenText, ChevronDown, Share2, ImageIcon, CalendarDays } from "lucide-react"
 
 interface MenuItem {
   id: string
@@ -126,13 +126,17 @@ const menuStructure: MenuItemOrGroup[] = [
           </svg>
         ),
       },
+      {
+        id: "google-search",
+        label: "Google Search",
+        path: "/google-search",
+        icon: (
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+          </svg>
+        ),
+      },
     ]
-  },
-  {
-    id: "veiculacao-offline",
-    label: "Veiculação Off-line",
-    path: "/veiculacao-offline",
-    icon: <Radio className="w-5 h-5" />,
   },
   {
     id: "trafego-engajamento",

@@ -68,6 +68,23 @@ export const fetchGoogleSearchCreatives = async (): Promise<ConsolidadoData> => 
   return response.data
 }
 
+export const useGoogleSearchData = () => {
+  const [data, setData] = useState<ConsolidadoData | null>(null)
+  const [loading, setLoading] = useState<boolean>(true)
+  const [error, setError] = useState<Error | null>(null)
+
+  const loadData = React.useCallback(async () => {
+    try {
+      setLoading(true)
+      setData(await fetchGoogleSearchCreatives())
+      setError(null)
+    } catch (err) { setError(err as Error) } finally { setLoading(false) }
+  }, [])
+
+  React.useEffect(() => { loadData() }, [loadData])
+  return { data, loading, error, refetch: loadData }
+}
+
 export const fetchGooglePMaxCreatives = async (): Promise<ConsolidadoData> => {
   const response = await consolidadoApi.get(
     `/google/sheets/${SHEET_ID}/data?sheet=Google%20-%20PMAX`
