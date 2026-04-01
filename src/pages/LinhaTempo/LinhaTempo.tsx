@@ -411,7 +411,7 @@ const LinhaTempo: React.FC = () => {
           { label: "Investimento", value: formatCurrency(totals.spent) },
           { label: "Impressões",   value: formatNumber(totals.impressions) },
           { label: "Cliques",      value: formatNumber(totals.clicks) },
-          { label: "Vídeos",       value: formatNumber(totals.videoViews) },
+          { label: "Visualizações",       value: formatNumber(totals.videoViews) },
           { label: "Leads",        value: formatNumber(totals.leads) },
           { label: "Engajamentos", value: formatNumber(totals.engagements) },
           { label: "CPM",          value: formatCurrency(totals.cpm) },
@@ -504,7 +504,7 @@ const LinhaTempo: React.FC = () => {
               {([
                 { key: "impressions", label: "Impressões" },
                 { key: "totalSpent",  label: "Investimento" },
-                { key: "videoViews",  label: "Vídeos" },
+                { key: "videoViews",  label: "Visualizações" },
                 { key: "clicks",      label: "Cliques" },
                 { key: "leads",       label: "Leads" },
                 { key: "cpm",         label: "CPM" },

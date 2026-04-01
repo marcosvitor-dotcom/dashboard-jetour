@@ -299,7 +299,7 @@ const VisaoGeral: React.FC = () => {
           { label: "Investimento",  value: `R$ ${fmt(totals.investment)}`,          icon: <DollarSign className="w-4 h-4" /> },
           { label: "Impressões",    value: fmt(totals.impressions),                  icon: <Eye className="w-4 h-4" /> },
           { label: "Cliques",       value: fmt(totals.clicks),                       icon: <MousePointer className="w-4 h-4" /> },
-          { label: "Vídeos",        value: fmt(totals.videoPlays),                   icon: <Play className="w-4 h-4" /> },
+          { label: "Visualizações",        value: fmt(totals.videoPlays),                   icon: <Play className="w-4 h-4" /> },
           { label: "Leads",         value: fmt(totals.leads),                        icon: <Users className="w-4 h-4" /> },
           { label: "CPM",           value: fmtCurrency(totals.cpm),                  icon: <TrendingUp className="w-4 h-4" /> },
           { label: "CTR",           value: fmtPct(totals.ctr),                       icon: <BarChart3 className="w-4 h-4" /> },
@@ -482,7 +482,7 @@ const VisaoGeral: React.FC = () => {
                 <th className="text-right py-2.5 px-3 font-semibold">Investimento</th>
                 <th className="text-right py-2.5 px-3 font-semibold">Impressões</th>
                 <th className="text-right py-2.5 px-3 font-semibold">Cliques</th>
-                <th className="text-right py-2.5 px-3 font-semibold">Vídeos</th>
+                <th className="text-right py-2.5 px-3 font-semibold">Visualizações</th>
                 <th className="text-right py-2.5 px-3 font-semibold">Leads</th>
                 <th className="text-right py-2.5 px-3 font-semibold">CPM</th>
                 <th className="text-right py-2.5 px-3 font-semibold">CTR</th>

@@ -532,7 +532,7 @@ const Capa: React.FC = () => {
                 const labels: Record<MetricType, string> = {
                   impressions: "Impressões",
                   spent: "Investimento",
-                  videoViews: "Vídeos",
+                  videoViews: "Visualizações",
                   clicks: "Cliques",
                   leads: "Leads",
                   sessions: "Sessões GA",

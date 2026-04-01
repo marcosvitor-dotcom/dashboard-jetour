@@ -609,7 +609,7 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
             {([
               { key: "impressions", label: "Impressões", icon: TrendingUp },
               { key: "clicks",      label: "Cliques",    icon: MousePointer },
-              { key: "views",       label: "Vídeos",     icon: Eye },
+              { key: "views",       label: "Visualizações",     icon: Eye },
               { key: "cpm",         label: "CPM",        icon: DollarSign },
               { key: "cpc",         label: "CPC",        icon: DollarSign },
               { key: "cpv",         label: "CPV",        icon: DollarSign },
