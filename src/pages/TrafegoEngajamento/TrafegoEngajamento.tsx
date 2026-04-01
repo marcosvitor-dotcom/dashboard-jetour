@@ -203,7 +203,7 @@ const TrafegoEngajamento: React.FC = () => {
         <div className="flex items-center gap-3">
           <img src="/images/Jetour_logo.svg" alt="Jetour" className="h-7 object-contain" />
           <div>
-            <h1 className="text-lg font-bold text-gray-900 leading-tight">Tráfego e Engajamento</h1>
+            <h1 className="text-lg font-bold text-gray-900 leading-tight">Site</h1>
             <p className="text-xs text-gray-500">Google Analytics 4 — dados do site</p>
           </div>
         </div>
