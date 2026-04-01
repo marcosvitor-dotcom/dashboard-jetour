@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useMemo, useState } from "react"
+import { useMemo, useState, useRef } from "react"
 import { ResponsiveLine } from "@nivo/line"
 import {
   DollarSign,
@@ -9,13 +9,13 @@ import {
   MousePointerClick,
   Play,
   BarChart3,
-  TrendingUp,
   Users,
+  Globe,
 } from "lucide-react"
-import { useConsolidadoGeral, parseBrazilianCurrency } from "../../services/consolidadoApi"
+import { useConsolidadoGeral, parseBrazilianCurrency, useGA4 } from "../../services/consolidadoApi"
 import Loading from "../../components/Loading/Loading"
 
-type MetricType = "impressions" | "clicks" | "videoViews" | "spent" | "leads"
+type MetricType = "impressions" | "clicks" | "videoViews" | "spent" | "leads" | "sessions"
 
 const Capa: React.FC = () => {
   const {
@@ -25,43 +25,152 @@ const Capa: React.FC = () => {
     error,
     data: consolidadoData,
   } = useConsolidadoGeral()
+  const { data: ga4Data } = useGA4()
 
   const [selectedMetric, setSelectedMetric] = useState<MetricType>("impressions")
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null)
+  const [datePickerOpen, setDatePickerOpen] = useState(false)
+  const pillRef = useRef<HTMLButtonElement>(null)
+  const [filterStart, setFilterStart] = useState<string>("") // "YYYY-MM-DD"
+  const [filterEnd, setFilterEnd] = useState<string>("")     // "YYYY-MM-DD"
 
-  // ── Totais gerais do consolidado ──────────────────────────────────────────
+  // ── Helpers de data ───────────────────────────────────────────────────────
+  const parseRowDate = (dateStr: string): Date | null => {
+    const parts = dateStr.split("/")
+    if (parts.length !== 3) return null
+    const [day, month, year] = parts
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+  }
+
+  const formatDateBR = (d: Date) =>
+    `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`
+
+  const toInputValue = (d: Date) => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, "0")
+    const day = String(d.getDate()).padStart(2, "0")
+    return `${y}-${m}-${day}`
+  }
+
+  // ── Intervalo de datas real da planilha ───────────────────────────────────
+  const dataDateRange = useMemo(() => {
+    if (!consolidadoData?.success || !consolidadoData?.data?.values) return null
+    const headers = consolidadoData.data.values[0]
+    const dateIdx = headers.indexOf("Date")
+    if (dateIdx === -1) return null
+
+    let min: Date | null = null
+    let max: Date | null = null
+    for (const row of consolidadoData.data.values.slice(1)) {
+      if (!row[dateIdx]) continue
+      const d = parseRowDate(row[dateIdx])
+      if (!d) continue
+      if (!min || d < min) min = d
+      if (!max || d > max) max = d
+    }
+    if (!min || !max) return null
+    return { min, max }
+  }, [consolidadoData])
+
+  // Inicializa os inputs com o intervalo real quando os dados chegam
+  const activeStart = filterStart || (dataDateRange ? toInputValue(dataDateRange.min) : "")
+  const activeEnd   = filterEnd   || (dataDateRange ? toInputValue(dataDateRange.max) : "")
+
+  const activeStartDate = activeStart ? new Date(activeStart + "T00:00:00") : null
+  const activeEndDate   = activeEnd   ? new Date(activeEnd   + "T00:00:00") : null
+
+  const isFiltered =
+    dataDateRange &&
+    activeStartDate && activeEndDate &&
+    (activeStartDate.getTime() !== dataDateRange.min.getTime() ||
+     activeEndDate.getTime()   !== dataDateRange.max.getTime())
+
+  // ── Totais gerais do consolidado (com filtro de data) ─────────────────────
   const totaisGerais = useMemo(() => {
     if (!consolidadoData?.success || !consolidadoData?.data?.values) {
-      return { spent: 0, impressions: 0, clicks: 0, videoViews: 0, leads: 0, engagements: 0 }
+      return { spent: 0, impressions: 0, clicks: 0, videoViews: 0, leads: 0 }
     }
     const headers = consolidadoData.data.values[0]
     const rows = consolidadoData.data.values.slice(1)
 
+    const dateIdx = headers.indexOf("Date")
     const spentIdx = headers.indexOf("Total spent")
     const impressionsIdx = headers.indexOf("Impressions")
     const clicksIdx = headers.indexOf("Clicks")
     const videoViewsIdx = headers.indexOf("Video views")
     const leadsIdx = headers.indexOf("Leads")
-    const engagementsIdx = headers.indexOf("Total engagements")
 
     return rows.reduce(
-      (acc, row) => ({
-        spent: acc.spent + parseBrazilianCurrency(row[spentIdx] || "0"),
-        impressions: acc.impressions + (parseFloat(row[impressionsIdx]) || 0),
-        clicks: acc.clicks + (parseFloat(row[clicksIdx]) || 0),
-        videoViews: acc.videoViews + (parseFloat(row[videoViewsIdx]) || 0),
-        leads: acc.leads + (parseFloat(row[leadsIdx]) || 0),
-        engagements: acc.engagements + (parseFloat(row[engagementsIdx]) || 0),
-      }),
-      { spent: 0, impressions: 0, clicks: 0, videoViews: 0, leads: 0, engagements: 0 }
+      (acc, row) => {
+        if (activeStartDate && activeEndDate && dateIdx !== -1 && row[dateIdx]) {
+          const d = parseRowDate(row[dateIdx])
+          if (!d || d < activeStartDate || d > activeEndDate) return acc
+        }
+        return {
+          spent: acc.spent + parseBrazilianCurrency(row[spentIdx] || "0"),
+          impressions: acc.impressions + (parseFloat(row[impressionsIdx]) || 0),
+          clicks: acc.clicks + (parseFloat(row[clicksIdx]) || 0),
+          videoViews: acc.videoViews + (parseFloat(row[videoViewsIdx]) || 0),
+          leads: acc.leads + (parseFloat(row[leadsIdx]) || 0),
+        }
+      },
+      { spent: 0, impressions: 0, clicks: 0, videoViews: 0, leads: 0 }
     )
-  }, [consolidadoData])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consolidadoData, activeStart, activeEnd])
 
-  // ── Métricas dos últimos 7 dias (com filtro de campanha) ──────────────────
-  const filteredLast7Days = useMemo(() => {
-    if (!selectedCampaign || !consolidadoData?.success || !consolidadoData?.data?.values) {
-      return last7Days
+  // ── Total de Sessões do GA4 (com filtro de data) ──────────────────────────
+  const totalSessoesGA = useMemo(() => {
+    if (!ga4Data?.success || !ga4Data?.data?.values || ga4Data.data.values.length < 2) return 0
+    const headers = ga4Data.data.values[0]
+    const sessionsIdx = headers.indexOf("Sessions")
+    const dateIdx = headers.indexOf("Date")
+    if (sessionsIdx === -1) return 0
+
+    // GA4 pode usar dd/mm/yyyy ou formato ISO (yyyy-mm-dd)
+    const parseGA4Date = (s: string): Date | null => {
+      const parts = s.split("/")
+      if (parts.length === 3) return new Date(+parts[2], +parts[1] - 1, +parts[0])
+      const d = new Date(s)
+      return isNaN(d.getTime()) ? null : d
     }
+
+    return ga4Data.data.values.slice(1).reduce((acc, row) => {
+      if (activeStartDate && activeEndDate && dateIdx !== -1 && row[dateIdx]) {
+        const d = parseGA4Date(row[dateIdx])
+        if (!d || d < activeStartDate || d > activeEndDate) return acc
+      }
+      const val = row[sessionsIdx] || "0"
+      return acc + (parseFloat(val.replace(/\./g, "").replace(",", ".")) || 0)
+    }, 0)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ga4Data, activeStart, activeEnd])
+
+  // ── Sessões GA4 por dia (dd/mm/yyyy) ─────────────────────────────────────
+  const ga4SessionsByDay = useMemo(() => {
+    const map = new Map<string, number>()
+    if (!ga4Data?.success || !ga4Data?.data?.values || ga4Data.data.values.length < 2) return map
+    const headers = ga4Data.data.values[0]
+    const sessionsIdx = headers.indexOf("Sessions")
+    const dateIdx = headers.indexOf("Date")
+    if (sessionsIdx === -1 || dateIdx === -1) return map
+    ga4Data.data.values.slice(1).forEach((row) => {
+      if (!row[dateIdx]) return
+      // normaliza para dd/mm/yyyy
+      let key = row[dateIdx] as string
+      if (key.includes("-")) {
+        const [y, m, d] = key.split("-")
+        key = `${d}/${m}/${y}`
+      }
+      const val = parseFloat((row[sessionsIdx] || "0").replace(/\./g, "").replace(",", ".")) || 0
+      map.set(key, (map.get(key) || 0) + val)
+    })
+    return map
+  }, [ga4Data])
+
+  // ── Métricas do gráfico (filtro de data + campanha) ───────────────────────
+  const filteredLast7Days = useMemo(() => {
+    if (!consolidadoData?.success || !consolidadoData?.data?.values) return last7Days
 
     const headers = consolidadoData.data.values[0]
     const rows = consolidadoData.data.values.slice(1)
@@ -74,24 +183,33 @@ const Capa: React.FC = () => {
     const videoViewsIdx = headers.indexOf("Video views")
     const leadsIdx = headers.indexOf("Leads")
 
-    const yesterday = new Date()
-    yesterday.setDate(yesterday.getDate() - 1)
-    yesterday.setHours(0, 0, 0, 0)
-    const sevenDaysAgo = new Date(yesterday)
-    sevenDaysAgo.setDate(yesterday.getDate() - 6)
-    sevenDaysAgo.setHours(0, 0, 0, 0)
+    // Intervalo: usa filtro do usuário se definido, senão últimos 7 dias
+    let chartStart: Date
+    let chartEnd: Date
+    if (activeStartDate && activeEndDate && isFiltered) {
+      chartStart = activeStartDate
+      chartEnd = activeEndDate
+    } else {
+      chartEnd = new Date()
+      chartEnd.setDate(chartEnd.getDate() - 1)
+      chartEnd.setHours(0, 0, 0, 0)
+      chartStart = new Date(chartEnd)
+      chartStart.setDate(chartEnd.getDate() - 6)
+      chartStart.setHours(0, 0, 0, 0)
+    }
 
-    const map = new Map<string, { date: string; impressions: number; clicks: number; videoViews: number; spent: number; leads: number }>()
+    const map = new Map<string, { date: string; impressions: number; clicks: number; videoViews: number; spent: number; leads: number; sessions: number }>()
 
     rows.forEach((row) => {
-      if (row[campaignIdx] !== selectedCampaign || !row[dateIdx]) return
-      const [day, month, year] = row[dateIdx].split("/")
-      const rowDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+      if (!row[dateIdx]) return
+      if (selectedCampaign && row[campaignIdx] !== selectedCampaign) return
+      const rowDate = parseRowDate(row[dateIdx])
+      if (!rowDate) return
       rowDate.setHours(0, 0, 0, 0)
-      if (rowDate < sevenDaysAgo || rowDate > yesterday) return
+      if (rowDate < chartStart || rowDate > chartEnd) return
 
       const key = row[dateIdx]
-      if (!map.has(key)) map.set(key, { date: key, impressions: 0, clicks: 0, videoViews: 0, spent: 0, leads: 0 })
+      if (!map.has(key)) map.set(key, { date: key, impressions: 0, clicks: 0, videoViews: 0, spent: 0, leads: 0, sessions: 0 })
       const m = map.get(key)!
       m.impressions += parseFloat(row[impressionsIdx]) || 0
       m.clicks += parseFloat(row[clicksIdx]) || 0
@@ -100,12 +218,23 @@ const Capa: React.FC = () => {
       m.leads += parseFloat(row[leadsIdx]) || 0
     })
 
-    return Array.from(map.values()).sort((a, b) => {
+    // Injeta sessões do GA4 em cada dia
+    map.forEach((val, key) => { val.sessions = ga4SessionsByDay.get(key) || 0 })
+
+    const sorted = Array.from(map.values()).sort((a, b) => {
       const [dA, mA, yA] = a.date.split("/").map(Number)
       const [dB, mB, yB] = b.date.split("/").map(Number)
       return new Date(yA, mA - 1, dA).getTime() - new Date(yB, mB - 1, dB).getTime()
     })
-  }, [selectedCampaign, consolidadoData, last7Days])
+
+    if (!isFiltered && !selectedCampaign) {
+      // enriquece o last7Days com sessões
+      return last7Days.map((d) => ({ ...d, sessions: ga4SessionsByDay.get(d.date) || 0 }))
+    }
+
+    return sorted
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCampaign, consolidadoData, last7Days, activeStart, activeEnd, isFiltered, ga4SessionsByDay])
 
   // ── Big numbers dos últimos 7 dias ────────────────────────────────────────
   const last7Totals = useMemo(() => {
@@ -134,14 +263,23 @@ const Capa: React.FC = () => {
       videoViews: "Visualizações",
       spent: "Investimento",
       leads: "Leads",
+      sessions: "Sessões GA",
     }
     return [
       {
         id: labels[selectedMetric],
-        data: filteredLast7Days.map((day) => ({ x: day.date, y: day[selectedMetric] })),
+        data: filteredLast7Days.map((day) => ({ x: day.date, y: (day as any)[selectedMetric] ?? 0 })),
       },
     ]
   }, [filteredLast7Days, selectedMetric])
+
+  // Ticks do eixo X: limita a ~10 labels para não poluir
+  const xTickValues = useMemo(() => {
+    const dates = chartData[0]?.data.map((d) => d.x) ?? []
+    if (dates.length <= 10) return dates
+    const step = Math.ceil(dates.length / 10)
+    return dates.filter((_, i) => i % step === 0 || i === dates.length - 1)
+  }, [chartData])
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const formatCurrency = (v: number) =>
@@ -239,21 +377,23 @@ const Capa: React.FC = () => {
   return (
     <div className="h-full flex flex-col space-y-4 overflow-auto">
 
-      {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl shadow-2xl h-44">
-        <video
-          className="w-full h-full object-cover"
-          autoPlay
-          loop
-          muted
-          playsInline
-        >
-          {/* Desktop */}
-          <source src="/images/jetour-hero.mp4" media="(min-width: 768px)" type="video/mp4" />
-          {/* Mobile */}
-          <source src="/images/Jetour_Hero_Mobile.mp4" type="video/mp4" />
-        </video>
-        <div className="absolute inset-0 bg-black/40" />
+      {/* ── Hero (wrapper com relative para o dropdown não ser cortado) ──── */}
+      <div className="relative rounded-2xl shadow-2xl h-44">
+        {/* vídeo com overflow-hidden isolado */}
+        <div className="absolute inset-0 overflow-hidden rounded-2xl">
+          <video
+            className="w-full h-full object-cover"
+            autoPlay
+            loop
+            muted
+            playsInline
+          >
+            <source src="/images/jetour-hero.mp4" media="(min-width: 768px)" type="video/mp4" />
+            <source src="/images/Jetour_Hero_Mobile.mp4" type="video/mp4" />
+          </video>
+          <div className="absolute inset-0 bg-black/40" />
+        </div>
+
         <div className="absolute bottom-0 left-0 right-0 p-4">
           <div className="bg-white/95 backdrop-blur-sm rounded-xl p-4 shadow-lg max-w-2xl flex items-center gap-4">
             <img src="/images/Jetour_logo.svg" alt="Jetour" className="h-8 object-contain" />
@@ -266,6 +406,91 @@ const Capa: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Filtro de período — canto inferior direito, fora do overflow-hidden */}
+        {dataDateRange && (
+          <div className="absolute bottom-4 right-4 z-10">
+            {/* Pílula clicável */}
+            <button
+              ref={pillRef}
+              onClick={() => setDatePickerOpen((v) => !v)}
+              className={`flex items-center gap-1.5 backdrop-blur-sm border rounded-full px-3 py-1.5 shadow-sm transition-all ${
+                isFiltered
+                  ? "bg-white text-gray-900 border-white"
+                  : "bg-white/15 text-white border-white/25 hover:bg-white/25"
+              }`}
+            >
+              <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span className="text-xs font-medium tracking-wide">
+                {activeStartDate && activeEndDate
+                  ? `${formatDateBR(activeStartDate)} – ${formatDateBR(activeEndDate)}`
+                  : "Selecionar período"}
+              </span>
+              <svg className={`w-3 h-3 flex-shrink-0 transition-transform ${datePickerOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Dropdown — fixed para escapar de qualquer overflow pai */}
+            {datePickerOpen && (() => {
+              const rect = pillRef.current?.getBoundingClientRect()
+              return (
+              <div
+                style={{
+                  position: "fixed",
+                  top: rect ? rect.bottom + 8 : 80,
+                  right: rect ? window.innerWidth - rect.right : 16,
+                  width: 288,
+                }}
+                className="bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 z-[9999]"
+              >
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Filtrar período</p>
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">De</label>
+                    <input
+                      type="date"
+                      value={activeStart}
+                      min={toInputValue(dataDateRange.min)}
+                      max={activeEnd || toInputValue(dataDateRange.max)}
+                      onChange={(e) => setFilterStart(e.target.value)}
+                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Até</label>
+                    <input
+                      type="date"
+                      value={activeEnd}
+                      min={activeStart || toInputValue(dataDateRange.min)}
+                      max={toInputValue(dataDateRange.max)}
+                      onChange={(e) => setFilterEnd(e.target.value)}
+                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  {isFiltered && (
+                    <button
+                      onClick={() => { setFilterStart(""); setFilterEnd(""); setDatePickerOpen(false) }}
+                      className="flex-1 text-xs text-gray-500 border border-gray-200 rounded-lg py-1.5 hover:bg-gray-50 transition-colors"
+                    >
+                      Limpar
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setDatePickerOpen(false)}
+                    className="flex-1 text-xs bg-blue-600 text-white rounded-lg py-1.5 hover:bg-blue-700 transition-colors font-medium"
+                  >
+                    Aplicar
+                  </button>
+                </div>
+              </div>
+            )})()}
+          </div>
+        )}
       </div>
 
       {/* ── Big Numbers — Total Geral ─────────────────────────────────────── */}
@@ -276,7 +501,7 @@ const Capa: React.FC = () => {
           { label: "Cliques", value: formatNumber(totaisGerais.clicks), icon: <MousePointerClick className="w-4 h-4 text-purple-600" />, bg: "bg-purple-50" },
           { label: "Visualizações", value: formatNumber(totaisGerais.videoViews), icon: <Play className="w-4 h-4 text-orange-600" />, bg: "bg-orange-50" },
           { label: "Leads", value: formatNumber(totaisGerais.leads), icon: <Users className="w-4 h-4 text-pink-600" />, bg: "bg-pink-50" },
-          { label: "Engajamentos", value: formatNumber(totaisGerais.engagements), icon: <TrendingUp className="w-4 h-4 text-teal-600" />, bg: "bg-teal-50" },
+          { label: "Sessões do GA", value: formatNumber(totalSessoesGA), icon: <Globe className="w-4 h-4 text-teal-600" />, bg: "bg-teal-50" },
         ].map((card) => (
           <div key={card.label} className="card-overlay rounded-xl shadow p-3">
             <div className="flex items-center gap-2 mb-1">
@@ -296,17 +521,21 @@ const Capa: React.FC = () => {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-blue-600" />
-              Últimos 7 dias {selectedCampaign && <span className="text-xs font-normal text-gray-500">— {selectedCampaign}</span>}
+              {isFiltered && activeStartDate && activeEndDate
+                ? `${formatDateBR(activeStartDate)} – ${formatDateBR(activeEndDate)}`
+                : "Últimos 7 dias"}
+              {selectedCampaign && <span className="text-xs font-normal text-gray-500">— {selectedCampaign}</span>}
             </h2>
             {/* Seletor de métrica */}
             <div className="flex gap-1 flex-wrap justify-end">
-              {(["impressions", "spent", "videoViews", "clicks", "leads"] as MetricType[]).map((m) => {
+              {(["impressions", "spent", "videoViews", "clicks", "leads", "sessions"] as MetricType[]).map((m) => {
                 const labels: Record<MetricType, string> = {
                   impressions: "Impressões",
                   spent: "Investimento",
                   videoViews: "Vídeos",
                   clicks: "Cliques",
                   leads: "Leads",
+                  sessions: "Sessões GA",
                 }
                 return (
                   <button
@@ -355,7 +584,7 @@ const Capa: React.FC = () => {
                   tickSize: 5,
                   tickPadding: 5,
                   tickRotation: -30,
-                  tickValues: chartData[0]?.data.map((d) => d.x),
+                  tickValues: xTickValues,
                 }}
                 axisLeft={{
                   tickSize: 5,
