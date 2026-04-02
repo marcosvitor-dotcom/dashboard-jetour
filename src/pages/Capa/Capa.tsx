@@ -496,19 +496,19 @@ const Capa: React.FC = () => {
       {/* ── Big Numbers — Total Geral ─────────────────────────────────────── */}
       <div className="grid grid-cols-3 lg:grid-cols-6 gap-3">
         {[
-          { label: "Investimento Total", value: formatCurrency(totaisGerais.spent), icon: <DollarSign className="w-4 h-4 text-green-600" />, bg: "bg-green-50" },
-          { label: "Impressões", value: formatNumber(totaisGerais.impressions), icon: <Eye className="w-4 h-4 text-blue-600" />, bg: "bg-blue-50" },
-          { label: "Cliques", value: formatNumber(totaisGerais.clicks), icon: <MousePointerClick className="w-4 h-4 text-purple-600" />, bg: "bg-purple-50" },
-          { label: "Visualizações", value: formatNumber(totaisGerais.videoViews), icon: <Play className="w-4 h-4 text-orange-600" />, bg: "bg-orange-50" },
-          { label: "Leads", value: formatNumber(totaisGerais.leads), icon: <Users className="w-4 h-4 text-pink-600" />, bg: "bg-pink-50" },
-          { label: "Sessões do GA", value: formatNumber(totalSessoesGA), icon: <Globe className="w-4 h-4 text-teal-600" />, bg: "bg-teal-50" },
+          { label: "Investimento Total", value: formatCurrency(totaisGerais.spent), icon: <DollarSign className="w-4 h-4" /> },
+          { label: "Impressões", value: formatNumber(totaisGerais.impressions), icon: <Eye className="w-4 h-4" /> },
+          { label: "Cliques", value: formatNumber(totaisGerais.clicks), icon: <MousePointerClick className="w-4 h-4" /> },
+          { label: "Visualizações", value: formatNumber(totaisGerais.videoViews), icon: <Play className="w-4 h-4" /> },
+          { label: "Leads", value: formatNumber(totaisGerais.leads), icon: <Users className="w-4 h-4" /> },
+          { label: "Sessões do GA", value: formatNumber(totalSessoesGA), icon: <Globe className="w-4 h-4" /> },
         ].map((card) => (
-          <div key={card.label} className="card-overlay rounded-xl shadow p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <div className={`p-1.5 ${card.bg} rounded`}>{card.icon}</div>
-              <p className="text-xs text-gray-500">{card.label}</p>
+          <div key={card.label} className="bg-slate-700/80 rounded-2xl px-3 py-3 flex flex-col gap-1 text-white">
+            <div className="flex items-center gap-1.5 text-slate-300 text-xs">
+              {card.icon}
+              {card.label}
             </div>
-            <p className="text-base font-bold text-gray-900 truncate">{card.value}</p>
+            <div className="text-base font-bold truncate">{card.value}</div>
           </div>
         ))}
       </div>
@@ -517,7 +517,7 @@ const Capa: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         {/* Gráfico — últimos 7 dias */}
-        <div className="lg:col-span-2 card-overlay rounded-xl shadow-lg p-5 flex flex-col" style={{ maxHeight: "420px" }}>
+        <div className="lg:col-span-2 card-overlay rounded-2xl shadow-lg p-5 flex flex-col" style={{ maxHeight: "420px" }}>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-blue-600" />
@@ -621,7 +621,7 @@ const Capa: React.FC = () => {
         </div>
 
         {/* Campanhas Ativas */}
-        <div className="card-overlay rounded-xl shadow-lg p-5 flex flex-col" style={{ maxHeight: "420px" }}>
+        <div className="card-overlay rounded-2xl shadow-lg p-5 flex flex-col" style={{ maxHeight: "420px" }}>
           <h2 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
             <BarChart3 className="w-4 h-4 text-green-600" />
             Campanhas Ativas

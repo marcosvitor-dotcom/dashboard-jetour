@@ -119,7 +119,6 @@ const VeiculacaoOffline: React.FC = () => {
 
   // Estados para filtros
   const [filtroCampanha, setFiltroCampanha] = useState<string>("")
-  const [filtroAgencia, setFiltroAgencia] = useState<string>("")
   const [filtroPraca, setFiltroPraca] = useState<string>("")
 
   // Processar dados da API
@@ -130,7 +129,6 @@ const VeiculacaoOffline: React.FC = () => {
         totais: { campanhas: 0, veiculos: 0, insercoes: 0, impactos: 0, investimento: 0 },
         campanhas: [],
         campanhasData: [],
-        agencias: [],
         pracas: [],
         pracasCategorized: {
           "Abrangência": [],
@@ -144,7 +142,6 @@ const VeiculacaoOffline: React.FC = () => {
 
     const meiosData: { [key: string]: MeioData } = {}
     const campanhasSet = new Set<string>()
-    const agenciasSet = new Set<string>()
     const pracasSet = new Set<string>()
     const veiculosSet = new Set<string>()
     const tiposCompraSet = new Set<string>()
@@ -160,18 +157,17 @@ const VeiculacaoOffline: React.FC = () => {
     const headers = data.data.values[0]
     const rows = data.data.values.slice(1)
 
-    // Mapear índices das colunas conforme a nova API
-    const agenciaIndex = headers.indexOf("AGÊNCIA")
+    // Mapear índices das colunas
+    const agenciaIndex = -1 // coluna não existe na nova API
     const campanhaIndex = headers.indexOf("CAMPANHA")
     const meioIndex = headers.indexOf("MEIO")
     const pracaIndex = headers.indexOf("PRAÇA")
     const veiculoIndex = headers.indexOf("VEÍCULO")
     const impressoesIndex = headers.indexOf("IMPRESSÕES / CLIQUES / DIÁRIAS")
     const tipoCompraIndex = headers.indexOf("TIPO DE COMPRA")
-    const valorDesembolsoIndex = headers.indexOf("VALORDESEMBOLSO95%(banco)")
+    const valorDesembolsoIndex = headers.indexOf("VALOR DESEMBOLSO")
 
     rows.forEach((row: string[]) => {
-      const agencia = row[agenciaIndex] || ""
       const campanha = row[campanhaIndex] || ""
       const meio = row[meioIndex] || ""
       const praca = row[pracaIndex] || ""
@@ -185,16 +181,14 @@ const VeiculacaoOffline: React.FC = () => {
       // Filtrar dados de Internet
       if (meio.toLowerCase() === "internet") return
 
-      // Adicionar aos conjuntos para filtros (sempre adiciona, independente dos filtros)
+      // Adicionar aos conjuntos para filtros
       if (campanha) campanhasSet.add(campanha)
-      if (agencia) agenciasSet.add(agencia)
       if (praca) pracasSet.add(praca)
       if (veiculo) veiculosSet.add(veiculo)
       if (tipoCompra) tiposCompraSet.add(tipoCompra)
 
       // Aplicar filtros
       if (filtroCampanha && campanha !== filtroCampanha) return
-      if (filtroAgencia && agencia !== filtroAgencia) return
       if (filtroPraca && praca !== filtroPraca) return
 
       // Adicionar aos conjuntos filtrados (apenas dados que passaram pelos filtros)
@@ -297,7 +291,6 @@ const VeiculacaoOffline: React.FC = () => {
 
       // Aplicar filtros
       if (filtroCampanha && campanha !== filtroCampanha) return
-      if (filtroAgencia && row[agenciaIndex] !== filtroAgencia) return
       if (filtroPraca && row[pracaIndex] !== filtroPraca) return
 
       const insercoesNum = parseNumero(impressoes)
@@ -353,12 +346,11 @@ const VeiculacaoOffline: React.FC = () => {
       },
       campanhas: Array.from(campanhasSet).sort(),
       campanhasData: campanhasArray,
-      agencias: Array.from(agenciasSet).sort(),
       pracas: Array.from(pracasSet).sort(),
       pracasCategorized: pracasCategorized,
       tiposCompra: tiposCompraSet
     }
-  }, [data, filtroCampanha, filtroAgencia, filtroPraca])
+  }, [data, filtroCampanha, filtroPraca])
 
   const toggleMeio = (meio: string) => {
     setExpandedMeios((prev) => ({ ...prev, [meio]: !prev[meio] }))
@@ -371,7 +363,6 @@ const VeiculacaoOffline: React.FC = () => {
 
   const limparFiltros = () => {
     setFiltroCampanha("")
-    setFiltroAgencia("")
     setFiltroPraca("")
   }
 
@@ -389,14 +380,14 @@ const VeiculacaoOffline: React.FC = () => {
 
   return (
     <div className="h-full flex flex-col space-y-4 overflow-auto">
-      {/* Header Minimalista com Filtros Integrados */}
-      <div className="card-overlay rounded-xl shadow-lg p-4">
+      {/* Header */}
+      <div className="card-overlay rounded-2xl shadow-lg px-5 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Radio className="w-6 h-6 text-purple-600" />
+          <div className="flex items-center gap-3">
+            <img src="/images/Jetour_logo.svg" alt="Jetour" className="h-7 object-contain" />
             <div>
-              <h1 className="text-xl font-bold text-gray-900">Veiculação Off-line</h1>
-              <p className="text-sm text-gray-600">Análise de inserções e impactos em mídias tradicionais</p>
+              <h1 className="text-lg font-bold text-gray-900 leading-tight">Off-line</h1>
+              <p className="text-xs text-gray-500">Veiculação em mídias tradicionais</p>
             </div>
           </div>
 
@@ -409,7 +400,7 @@ const VeiculacaoOffline: React.FC = () => {
                 setFiltroCampanha(e.target.value)
                 setExpandedCampanha(e.target.value || null)
               }}
-              className="text-sm bg-white border border-gray-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 cursor-pointer"
+              className="text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
             >
               <option value="">Campanha: Todas</option>
               {processedData.campanhas.map((campanha) => (
@@ -419,25 +410,11 @@ const VeiculacaoOffline: React.FC = () => {
               ))}
             </select>
 
-            {/* Filtro Agência */}
-            <select
-              value={filtroAgencia}
-              onChange={(e) => setFiltroAgencia(e.target.value)}
-              className="text-sm bg-white border border-gray-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 cursor-pointer"
-            >
-              <option value="">Agência: Todas</option>
-              {processedData.agencias.map((agencia) => (
-                <option key={agencia} value={agencia}>
-                  {agencia}
-                </option>
-              ))}
-            </select>
-
             {/* Filtro Praça */}
             <select
               value={filtroPraca}
               onChange={(e) => setFiltroPraca(e.target.value)}
-              className="text-sm bg-white border border-gray-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 cursor-pointer"
+              className="text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
             >
               <option value="">Praça: Todas</option>
               {processedData.pracasCategorized["Abrangência"].length > 0 && (
@@ -483,53 +460,32 @@ const VeiculacaoOffline: React.FC = () => {
 
       {/* Cards de Métricas Gerais */}
       <div className="grid grid-cols-4 gap-3">
-        {/* Campanhas */}
-        <div className="card-overlay rounded-lg shadow p-4">
-          <div className="flex items-center justify-between mb-1">
-            <h3 className="text-xs font-medium text-gray-600">Campanhas</h3>
-            <FileText className="w-4 h-4 text-purple-600" />
+        {[
+          { label: "Campanhas",        value: String(processedData.totais.campanhas),                      icon: <FileText className="w-4 h-4" /> },
+          { label: "Veículos",         value: String(processedData.totais.veiculos),                       icon: <Radio className="w-4 h-4" /> },
+          { label: "Investimento Total", value: formatCurrency(processedData.totais.investimento),         icon: <DollarSign className="w-4 h-4" /> },
+          { label: "Entrega",          value: formatNumber(processedData.totais.insercoes),                 icon: <TrendingUp className="w-4 h-4" /> },
+        ].map((card) => (
+          <div key={card.label} className="bg-slate-700/80 rounded-2xl px-3 py-3 flex flex-col gap-1 text-white">
+            <div className="flex items-center gap-1.5 text-slate-300 text-xs">
+              {card.icon}
+              {card.label}
+            </div>
+            <div className="text-base font-bold truncate">{card.value}</div>
           </div>
-          <p className="text-xl font-bold text-gray-900">{processedData.totais.campanhas}</p>
-        </div>
-
-        {/* Veículos */}
-        <div className="card-overlay rounded-lg shadow p-4">
-          <div className="flex items-center justify-between mb-1">
-            <h3 className="text-xs font-medium text-gray-600">Veículos</h3>
-            <Radio className="w-4 h-4 text-orange-600" />
-          </div>
-          <p className="text-xl font-bold text-gray-900">{processedData.totais.veiculos}</p>
-        </div>
-
-        {/* Investimento Total */}
-        <div className="card-overlay rounded-lg shadow p-4">
-          <div className="flex items-center justify-between mb-1">
-            <h3 className="text-xs font-medium text-gray-600">Investimento Total</h3>
-            <DollarSign className="w-4 h-4 text-green-600" />
-          </div>
-          <p className="text-lg font-bold text-gray-900">{formatCurrency(processedData.totais.investimento)}</p>
-        </div>
-
-        {/* Entrega */}
-        <div className="card-overlay rounded-lg shadow p-4">
-          <div className="flex items-center justify-between mb-1">
-            <h3 className="text-xs font-medium text-gray-600">Entrega</h3>
-            <TrendingUp className="w-4 h-4 text-blue-600" />
-          </div>
-          <p className="text-xl font-bold text-gray-900">{formatNumber(processedData.totais.insercoes)}</p>
-        </div>
+        ))}
       </div>
 
       {/* Grid: Campanhas (40%) + Meios (60%) */}
       <div className="grid grid-cols-5 gap-4">
         {/* Card de Campanhas com Accordion */}
-        <div className="card-overlay rounded-xl shadow-lg p-5 h-[600px] flex flex-col col-span-2">
+        <div className="card-overlay rounded-2xl shadow-lg p-5 h-[600px] flex flex-col col-span-2">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-bold text-gray-900 flex items-center">
-              <Megaphone className="w-4 h-4 mr-2 text-purple-600" />
+              <Megaphone className="w-4 h-4 mr-2 text-blue-600" />
               Campanhas ({processedData.campanhasData.length})
             </h2>
-            {(filtroCampanha || filtroAgencia || filtroPraca) && (
+            {(filtroCampanha || filtroPraca) && (
               <button
                 onClick={limparFiltros}
                 className="text-xs text-blue-600 hover:text-blue-800 underline"
@@ -546,9 +502,9 @@ const VeiculacaoOffline: React.FC = () => {
                 <div
                   className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${
                     filtroCampanha === campanha.nome
-                      ? "bg-purple-50 border-2 border-purple-400 shadow-sm"
+                      ? "bg-blue-50 border-2 border-blue-400 shadow-sm"
                       : expandedCampanha === campanha.nome
-                      ? "bg-purple-50 border-2 border-purple-300"
+                      ? "bg-blue-50 border-2 border-blue-300"
                       : "hover:bg-gray-50 border-2 border-transparent bg-gray-50"
                   }`}
                 >
@@ -609,7 +565,7 @@ const VeiculacaoOffline: React.FC = () => {
                             {Object.entries(campanha.meios).map(([meioNome, meio]) => (
                               <tr
                                 key={meioNome}
-                                className="border-b border-gray-100 last:border-b-0 hover:bg-purple-50"
+                                className="border-b border-gray-100 last:border-b-0 hover:bg-blue-50"
                               >
                                 <td className="py-2 px-2 text-gray-800 font-medium">{meioNome}</td>
                                 <td className="py-2 px-2 text-gray-600">{meio.veiculos.size}</td>
@@ -633,19 +589,19 @@ const VeiculacaoOffline: React.FC = () => {
         </div>
 
         {/* Card de Meios (60%) */}
-        <div className="card-overlay rounded-xl shadow-lg p-5 h-[600px] flex flex-col col-span-3">
+        <div className="card-overlay rounded-2xl shadow-lg p-5 h-[600px] flex flex-col col-span-3">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-bold text-gray-900 flex items-center">
-              <Radio className="w-4 h-4 mr-2 text-purple-600" />
+              <Radio className="w-4 h-4 mr-2 text-blue-600" />
               Meios de Comunicação
             </h2>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-2">
             {Object.values(processedData.meios).map((meio) => (
-              <div key={meio.nome} className="border-2 border-gray-200 rounded-lg overflow-hidden">
+              <div key={meio.nome} className="border border-gray-200 rounded-2xl overflow-hidden">
                 <div
-                  className="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+                  className="flex items-center justify-between p-3 bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors"
                   onClick={() => toggleMeio(meio.nome)}
                 >
                   <div className="flex items-center space-x-3">
@@ -671,7 +627,7 @@ const VeiculacaoOffline: React.FC = () => {
                 {expandedMeios[meio.nome] && (
                   <div className="p-3 space-y-2 bg-white">
                     {Object.entries(meio.pracas).map(([pracaKey, praca]) => (
-                      <div key={pracaKey} className="border border-gray-100 rounded-md">
+                      <div key={pracaKey} className="border border-gray-100 rounded-xl">
                         <div
                           className="flex items-center justify-between p-2 bg-gray-25 hover:bg-gray-50 transition-colors cursor-pointer"
                           onClick={() => togglePraca(meio.nome, pracaKey)}
