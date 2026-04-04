@@ -113,6 +113,67 @@ export const fetchGA4Mapa = async (): Promise<ConsolidadoData> => {
   return response.data
 }
 
+export const fetchInstagramPosts = async (): Promise<ConsolidadoData> => {
+  const response = await consolidadoApi.get(
+    `/google/sheets/${SHEET_ID}/data?sheet=Instagram%20-%20Post&range=A1%3AAZ20000`
+  )
+  return response.data
+}
+
+export const fetchInstagramFollows = async (): Promise<ConsolidadoData> => {
+  const response = await consolidadoApi.get(
+    `/google/sheets/${SHEET_ID}/data?sheet=Instagram%20-%20Follows&range=A1%3AAZ20000`
+  )
+  return response.data
+}
+
+export const fetchFacebookPosts = async (): Promise<ConsolidadoData> => {
+  const response = await consolidadoApi.get(
+    `/google/sheets/${SHEET_ID}/data?sheet=Facebook%20-%20Post&range=A1%3AAZ20000`
+  )
+  return response.data
+}
+
+export const fetchFacebookFollows = async (): Promise<ConsolidadoData> => {
+  const response = await consolidadoApi.get(
+    `/google/sheets/${SHEET_ID}/data?sheet=Facebook%20-%20Follows&range=A1%3AAZ20000`
+  )
+  return response.data
+}
+
+export const useOrganicData = () => {
+  const [igPosts, setIgPosts] = useState<ConsolidadoData | null>(null)
+  const [igFollows, setIgFollows] = useState<ConsolidadoData | null>(null)
+  const [fbPosts, setFbPosts] = useState<ConsolidadoData | null>(null)
+  const [fbFollows, setFbFollows] = useState<ConsolidadoData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
+
+  const loadData = React.useCallback(async () => {
+    try {
+      setLoading(true)
+      const [ip, ifo, fp, ff] = await Promise.all([
+        fetchInstagramPosts(),
+        fetchInstagramFollows(),
+        fetchFacebookPosts(),
+        fetchFacebookFollows(),
+      ])
+      setIgPosts(ip)
+      setIgFollows(ifo)
+      setFbPosts(fp)
+      setFbFollows(ff)
+      setError(null)
+    } catch (err) {
+      setError(err as Error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => { loadData() }, [loadData])
+  return { igPosts, igFollows, fbPosts, fbFollows, loading, error, refetch: loadData }
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 export const parseBrazilianCurrency = (value: string): number => {

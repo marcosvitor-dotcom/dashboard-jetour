@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState, useMemo } from "react"
-import { TrendingUp, Users, Eye, MousePointerClick, Activity, Zap, Globe } from "lucide-react"
+import { TrendingUp, Users, Eye, MousePointerClick, Activity, Zap, Globe, ChevronDown, ChevronUp } from "lucide-react"
 import Loading from "../../components/Loading/Loading"
 import { useGA4, useGA4Eventos, useGA4Mapa, parseBrazilianNumber } from "../../services/consolidadoApi"
 import BrazilMap from "../../components/BrazilMap/BrazilMap"
@@ -76,6 +76,19 @@ const TrafegoEngajamento: React.FC = () => {
   const { data: mapaData, loading: l3, error: e3, refetch: r3 } = useGA4Mapa()
 
   const [activeTab, setActiveTab] = useState<"overview" | "eventos" | "mapa">("overview")
+  const [tableOpen, setTableOpen] = useState(false)
+
+  // Formata data ISO yyyy-mm-dd ou dd/mm/yyyy → dd/mm
+  const fmtDateShort = (d: string) => {
+    if (!d) return ""
+    if (d.includes("-")) { const [y, m, day] = d.split("-"); return `${day}/${m}` }
+    const [day, m] = d.split("/"); return `${day}/${m}`
+  }
+  const fmtDateFull = (d: string) => {
+    if (!d) return ""
+    if (d.includes("-")) { const [y, m, day] = d.split("-"); return `${day}/${m}/${y}` }
+    return d
+  }
 
   const refetch = () => { r1(); r2(); r3() }
 
@@ -256,7 +269,6 @@ const TrafegoEngajamento: React.FC = () => {
               <div className="flex items-end gap-1.5" style={{ height: 160 }}>
                 {dailySorted.slice(0, 14).reverse().map((row) => {
                   const pct = (row.sessions / barMax) * 100
-                  const label = row.date.slice(0, 5)
                   return (
                     <div key={row.date} className="flex-1 flex flex-col items-center gap-1 group">
                       <div className="text-xs text-transparent group-hover:text-gray-500 transition-colors whitespace-nowrap font-semibold">
@@ -269,7 +281,7 @@ const TrafegoEngajamento: React.FC = () => {
                           style={{ height: `${pct}%` }}
                         />
                       </div>
-                      <div className="text-xs text-gray-400 whitespace-nowrap">{label}</div>
+                      <div className="text-xs text-gray-400 whitespace-nowrap">{fmtDateShort(row.date)}</div>
                     </div>
                   )
                 })}
@@ -277,48 +289,59 @@ const TrafegoEngajamento: React.FC = () => {
             )}
           </div>
 
-          {/* Data table */}
+          {/* Data table — collapse */}
           <div className="card-overlay rounded-2xl shadow p-4">
-            <p className="text-sm font-bold text-gray-800 mb-3">Dados por Dia</p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-slate-700 text-white">
-                    <th className="text-left py-2.5 px-3 font-semibold rounded-l-xl">Data</th>
-                    <th className="text-right py-2.5 px-3 font-semibold">Novos Usuários</th>
-                    <th className="text-right py-2.5 px-3 font-semibold">Sessões</th>
-                    <th className="text-right py-2.5 px-3 font-semibold">Visualizações</th>
-                    <th className="text-right py-2.5 px-3 font-semibold">Sess. Engajadas</th>
-                    <th className="text-right py-2.5 px-3 font-semibold">Eventos</th>
-                    <th className="text-right py-2.5 px-3 font-semibold rounded-r-xl">Tx. Rejeição</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dailySorted.map((row, i) => (
-                    <tr key={row.date} className={i % 2 === 0 ? "bg-slate-50/60" : "bg-white/40"}>
-                      <td className="py-2.5 px-3 font-semibold text-gray-700">{row.date}</td>
-                      <td className="py-2.5 px-3 text-right text-gray-700">{fmt(row.newUsers)}</td>
-                      <td className="py-2.5 px-3 text-right text-gray-700">{fmt(row.sessions)}</td>
-                      <td className="py-2.5 px-3 text-right text-gray-700">{fmt(row.views)}</td>
-                      <td className="py-2.5 px-3 text-right text-gray-700">{fmt(row.engagedSessions)}</td>
-                      <td className="py-2.5 px-3 text-right text-gray-700">{fmt(row.eventCount)}</td>
-                      <td className="py-2.5 px-3 text-right text-gray-700">{fmtPct(row.bounceRate)}</td>
+            <button
+              className="w-full flex items-center justify-between"
+              onClick={() => setTableOpen((v) => !v)}
+            >
+              <p className="text-sm font-bold text-gray-800">Dados por Dia ({dailySorted.length} dias)</p>
+              {tableOpen
+                ? <ChevronUp className="w-4 h-4 text-gray-400" />
+                : <ChevronDown className="w-4 h-4 text-gray-400" />}
+            </button>
+
+            {tableOpen && (
+              <div className="overflow-x-auto mt-3">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-slate-700 text-white">
+                      <th className="text-left py-2.5 px-3 font-semibold rounded-l-xl">Data</th>
+                      <th className="text-right py-2.5 px-3 font-semibold">Novos Usuários</th>
+                      <th className="text-right py-2.5 px-3 font-semibold">Sessões</th>
+                      <th className="text-right py-2.5 px-3 font-semibold">Visualizações</th>
+                      <th className="text-right py-2.5 px-3 font-semibold">Sess. Engajadas</th>
+                      <th className="text-right py-2.5 px-3 font-semibold">Eventos</th>
+                      <th className="text-right py-2.5 px-3 font-semibold rounded-r-xl">Tx. Rejeição</th>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="bg-slate-700 text-white font-bold border-t-2 border-slate-600">
-                    <td className="py-2.5 px-3 rounded-l-xl">Total</td>
-                    <td className="py-2.5 px-3 text-right">{fmt(totals.newUsers)}</td>
-                    <td className="py-2.5 px-3 text-right">{fmt(totals.sessions)}</td>
-                    <td className="py-2.5 px-3 text-right">{fmt(totals.views)}</td>
-                    <td className="py-2.5 px-3 text-right">{fmt(totals.engagedSessions)}</td>
-                    <td className="py-2.5 px-3 text-right">{fmt(totals.eventCount)}</td>
-                    <td className="py-2.5 px-3 text-right rounded-r-xl">{fmtPct(totals.avgBounceRate)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {dailySorted.map((row, i) => (
+                      <tr key={row.date} className={i % 2 === 0 ? "bg-slate-50/60" : "bg-white/40"}>
+                        <td className="py-2.5 px-3 font-semibold text-gray-700">{fmtDateFull(row.date)}</td>
+                        <td className="py-2.5 px-3 text-right text-gray-700">{fmt(row.newUsers)}</td>
+                        <td className="py-2.5 px-3 text-right text-gray-700">{fmt(row.sessions)}</td>
+                        <td className="py-2.5 px-3 text-right text-gray-700">{fmt(row.views)}</td>
+                        <td className="py-2.5 px-3 text-right text-gray-700">{fmt(row.engagedSessions)}</td>
+                        <td className="py-2.5 px-3 text-right text-gray-700">{fmt(row.eventCount)}</td>
+                        <td className="py-2.5 px-3 text-right text-gray-700">{fmtPct(row.bounceRate)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-700 text-white font-bold border-t-2 border-slate-600">
+                      <td className="py-2.5 px-3 rounded-l-xl">Total</td>
+                      <td className="py-2.5 px-3 text-right">{fmt(totals.newUsers)}</td>
+                      <td className="py-2.5 px-3 text-right">{fmt(totals.sessions)}</td>
+                      <td className="py-2.5 px-3 text-right">{fmt(totals.views)}</td>
+                      <td className="py-2.5 px-3 text-right">{fmt(totals.engagedSessions)}</td>
+                      <td className="py-2.5 px-3 text-right">{fmt(totals.eventCount)}</td>
+                      <td className="py-2.5 px-3 text-right rounded-r-xl">{fmtPct(totals.avgBounceRate)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

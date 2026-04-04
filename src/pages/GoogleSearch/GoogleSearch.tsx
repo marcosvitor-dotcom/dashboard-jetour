@@ -58,28 +58,56 @@ const WordCloud: React.FC<{ words: WordItem[] }> = ({ words }) => {
   const maxVal = words[0].value
   const minVal = words[words.length - 1].value
 
+  // Gera posições espirais ao redor do centro para simular nuvem real
+  // Cada palavra recebe um ângulo e raio crescente
+  const W = 420 // largura lógica do container
+  const H = 300 // altura lógica do container
+  const cx = W / 2
+  const cy = H / 2
+
+  const positioned = words.map((w, i) => {
+    const fontSize = getWordSize(w.value, maxVal, minVal)
+    const golden = 2.399963
+    // Raio maior = mais espaço entre palavras; palavras grandes ocupam mais espaço
+    const radius = i === 0 ? 0 : 30 + i * 13 + fontSize * 0.8
+    const angle = i * golden
+    const rawX = cx + Math.cos(angle) * radius
+    const rawY = cy + Math.sin(angle) * radius * 0.52
+    const margin = fontSize * 1.8
+    const x = Math.max(margin, Math.min(W - margin, rawX))
+    const y = Math.max(fontSize, Math.min(H - fontSize, rawY))
+    return { ...w, fontSize, x, y }
+  })
+
   return (
-    <div className="border border-gray-100 rounded-xl p-6 min-h-[300px] flex flex-wrap items-center justify-center gap-3">
-      {words.map((w, i) => {
-        const fontSize = getWordSize(w.value, maxVal, minVal)
-        const opacity = 0.5 + (w.value / maxVal) * 0.5
-        return (
-          <span
-            key={`${w.text}-${i}`}
-            title={`${w.text}: ${w.value.toLocaleString("pt-BR")} impressões`}
-            className="inline-block cursor-default hover:opacity-100 transition-opacity"
-            style={{
-              fontSize: `${fontSize}px`,
-              color: CLOUD_COLORS[i % CLOUD_COLORS.length],
-              opacity,
-              fontWeight: fontSize > 26 ? 700 : fontSize > 18 ? 600 : 400,
-              lineHeight: 1.2,
-            }}
-          >
-            {w.text}
-          </span>
-        )
-      })}
+    <div
+      className="border border-gray-100 rounded-xl overflow-hidden"
+      style={{ position: "relative", width: "100%", paddingBottom: `${(H / W) * 100}%` }}
+    >
+      <div style={{ position: "absolute", inset: 0 }}>
+        <svg width="100%" height="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
+          {positioned.map((w, i) => {
+            const opacity = 0.55 + (w.value / maxVal) * 0.45
+            return (
+              <text
+                key={`${w.text}-${i}`}
+                x={w.x}
+                y={w.y}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill={CLOUD_COLORS[i % CLOUD_COLORS.length]}
+                fontSize={w.fontSize}
+                fontWeight={w.fontSize > 26 ? 700 : w.fontSize > 18 ? 600 : 400}
+                opacity={opacity}
+                style={{ cursor: "default", userSelect: "none" }}
+              >
+                <title>{`${w.text}: ${w.value.toLocaleString("pt-BR")} impressões`}</title>
+                {w.text}
+              </text>
+            )
+          })}
+        </svg>
+      </div>
     </div>
   )
 }
@@ -264,18 +292,21 @@ const GoogleSearch: React.FC = () => {
         ))}
       </div>
 
-      {/* Word Cloud */}
-      <div className="card-overlay rounded-2xl shadow-lg p-4">
-        <p className="text-sm font-bold text-gray-800 mb-1">Nuvem de Palavras-chave</p>
-        <p className="text-xs text-gray-400 mb-3">Tamanho proporcional às impressões</p>
-        <div className="w-full bg-white/60 rounded-xl min-h-[200px]">
+      {/* Word Cloud + Filters side by side */}
+      <div className="grid grid-cols-2 gap-4">
+
+        {/* Word Cloud */}
+        <div className="card-overlay rounded-2xl shadow-lg p-4">
+          <p className="text-sm font-bold text-gray-800 mb-1">Nuvem de Palavras-chave</p>
+          <p className="text-xs text-gray-400 mb-3">Tamanho proporcional às impressões</p>
           <WordCloud words={cloudWords} />
         </div>
-      </div>
 
-      {/* Filters */}
-      <div className="card-overlay rounded-2xl shadow-lg p-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Rankings + Filters */}
+        <div className="card-overlay rounded-2xl shadow-lg p-4 flex flex-col gap-4">
+
+          {/* Filtros */}
+          <div className="grid grid-cols-2 gap-3">
           {[
             { label: "Campanha", value: selectedCampaign, opts: availableCampaigns, set: (v: string) => { setSelectedCampaign(v); setCurrentPage(1) } },
             { label: "Correspondência", value: selectedMatchType, opts: availableMatchTypes, set: (v: string) => { setSelectedMatchType(v); setCurrentPage(1) } },
@@ -302,8 +333,70 @@ const GoogleSearch: React.FC = () => {
             <input type="date" value={dateRange.end} onChange={(e) => { setDateRange((p) => ({ ...p, end: e.target.value })); setCurrentPage(1) }}
               className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
-        </div>
-      </div>
+          </div>{/* fim grid filtros */}
+
+          {/* Divider */}
+          <div className="border-t border-gray-100" />
+
+          {/* Top 10 lado a lado */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* Top Cliques */}
+            <div>
+              <p className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1">
+                <MousePointer className="w-3.5 h-3.5 text-blue-500" /> Top 10 — Cliques
+              </p>
+              <div className="space-y-1">
+                {[...grouped].sort((a, b) => b.clicks - a.clicks).slice(0, 10).map((r, i) => {
+                  const pct = grouped[0]?.clicks ? (r.clicks / [...grouped].sort((a,b)=>b.clicks-a.clicks)[0].clicks) * 100 : 0
+                  return (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-400 w-4 text-right flex-shrink-0">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[10px] text-gray-700 truncate font-medium">{r.keyword}</span>
+                          <span className="text-[10px] font-bold text-blue-600 flex-shrink-0 ml-1">{fmt(r.clicks)}</span>
+                        </div>
+                        <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-blue-500 rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Top CTR */}
+            <div>
+              <p className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1">
+                <TrendingUp className="w-3.5 h-3.5 text-green-500" /> Top 10 — CTR
+              </p>
+              <div className="space-y-1">
+                {[...grouped].filter(r => r.impressions >= 10).sort((a, b) => b.ctr - a.ctr).slice(0, 10).map((r, i) => {
+                  const maxCtr = [...grouped].filter(r => r.impressions >= 10).sort((a,b)=>b.ctr-a.ctr)[0]?.ctr || 1
+                  const pct = (r.ctr / maxCtr) * 100
+                  return (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-400 w-4 text-right flex-shrink-0">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[10px] text-gray-700 truncate font-medium">{r.keyword}</span>
+                          <span className="text-[10px] font-bold text-green-600 flex-shrink-0 ml-1">{fmtPct(r.ctr)}</span>
+                        </div>
+                        <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-green-500 rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+        </div>{/* fim card rankings+filters */}
+
+      </div>{/* fim grid word cloud + filters */}
 
       {/* Table */}
       <div className="card-overlay rounded-2xl shadow p-4">

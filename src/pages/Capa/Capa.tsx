@@ -12,7 +12,7 @@ import {
   Users,
   Globe,
 } from "lucide-react"
-import { useConsolidadoGeral, parseBrazilianCurrency, useGA4 } from "../../services/consolidadoApi"
+import { useConsolidadoGeral, parseBrazilianCurrency, useGA4, useGoogleSearchData } from "../../services/consolidadoApi"
 import Loading from "../../components/Loading/Loading"
 
 type MetricType = "impressions" | "clicks" | "videoViews" | "spent" | "leads" | "sessions"
@@ -26,6 +26,7 @@ const Capa: React.FC = () => {
     data: consolidadoData,
   } = useConsolidadoGeral()
   const { data: ga4Data } = useGA4()
+  const { data: searchData } = useGoogleSearchData()
 
   const [selectedMetric, setSelectedMetric] = useState<MetricType>("impressions")
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null)
@@ -85,39 +86,57 @@ const Capa: React.FC = () => {
     (activeStartDate.getTime() !== dataDateRange.min.getTime() ||
      activeEndDate.getTime()   !== dataDateRange.max.getTime())
 
-  // ── Totais gerais do consolidado (com filtro de data) ─────────────────────
+  // ── Totais gerais do consolidado + Google Search (com filtro de data) ────────
   const totaisGerais = useMemo(() => {
-    if (!consolidadoData?.success || !consolidadoData?.data?.values) {
-      return { spent: 0, impressions: 0, clicks: 0, videoViews: 0, leads: 0 }
-    }
-    const headers = consolidadoData.data.values[0]
-    const rows = consolidadoData.data.values.slice(1)
+    const base = { spent: 0, impressions: 0, clicks: 0, videoViews: 0, leads: 0 }
 
-    const dateIdx = headers.indexOf("Date")
-    const spentIdx = headers.indexOf("Total spent")
-    const impressionsIdx = headers.indexOf("Impressions")
-    const clicksIdx = headers.indexOf("Clicks")
-    const videoViewsIdx = headers.indexOf("Video views")
-    const leadsIdx = headers.indexOf("Leads")
-
-    return rows.reduce(
-      (acc, row) => {
+    // 1) Consolidado (Meta, TikTok, etc.)
+    if (consolidadoData?.success && consolidadoData?.data?.values) {
+      const headers = consolidadoData.data.values[0]
+      const rows = consolidadoData.data.values.slice(1)
+      const dateIdx = headers.indexOf("Date")
+      const spentIdx = headers.indexOf("Total spent")
+      const impressionsIdx = headers.indexOf("Impressions")
+      const clicksIdx = headers.indexOf("Clicks")
+      const videoViewsIdx = headers.indexOf("Video views")
+      const leadsIdx = headers.indexOf("Leads")
+      rows.forEach((row) => {
         if (activeStartDate && activeEndDate && dateIdx !== -1 && row[dateIdx]) {
           const d = parseRowDate(row[dateIdx])
-          if (!d || d < activeStartDate || d > activeEndDate) return acc
+          if (!d || d < activeStartDate || d > activeEndDate) return
         }
-        return {
-          spent: acc.spent + parseBrazilianCurrency(row[spentIdx] || "0"),
-          impressions: acc.impressions + (parseFloat(row[impressionsIdx]) || 0),
-          clicks: acc.clicks + (parseFloat(row[clicksIdx]) || 0),
-          videoViews: acc.videoViews + (parseFloat(row[videoViewsIdx]) || 0),
-          leads: acc.leads + (parseFloat(row[leadsIdx]) || 0),
+        base.spent += parseBrazilianCurrency(row[spentIdx] || "0")
+        base.impressions += parseFloat(row[impressionsIdx]) || 0
+        base.clicks += parseFloat(row[clicksIdx]) || 0
+        base.videoViews += parseFloat(row[videoViewsIdx]) || 0
+        base.leads += parseFloat(row[leadsIdx]) || 0
+      })
+    }
+
+    // 2) Google Search
+    if (searchData?.success && searchData?.data?.values && searchData.data.values.length > 1) {
+      const headers = searchData.data.values[0]
+      const rows = searchData.data.values.slice(1)
+      const dayIdx = headers.indexOf("Day")
+      const costIdx = headers.indexOf("Cost (Spend)")
+      const clicksIdx = headers.indexOf("Clicks")
+      const impressionsIdx = headers.indexOf("Impressions")
+      const parseN = (v: string) => parseFloat((v || "").replace(/[R$\s.]/g, "").replace(",", ".")) || 0
+      const parseI = (v: string) => parseInt((v || "").replace(/[.\s]/g, "").replace(",", "")) || 0
+      rows.forEach((row) => {
+        if (activeStartDate && activeEndDate && dayIdx !== -1 && row[dayIdx]) {
+          const d = parseRowDate(row[dayIdx])
+          if (!d || d < activeStartDate || d > activeEndDate) return
         }
-      },
-      { spent: 0, impressions: 0, clicks: 0, videoViews: 0, leads: 0 }
-    )
+        base.spent += parseN(row[costIdx] || "0")
+        base.clicks += parseI(row[clicksIdx] || "0")
+        base.impressions += parseI(row[impressionsIdx] || "0")
+      })
+    }
+
+    return base
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [consolidadoData, activeStart, activeEnd])
+  }, [consolidadoData, searchData, activeStart, activeEnd])
 
   // ── Total de Sessões do GA4 (com filtro de data) ──────────────────────────
   const totalSessoesGA = useMemo(() => {
