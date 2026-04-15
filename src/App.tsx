@@ -14,7 +14,9 @@ import CriativosLinkedIn from "./pages/CriativosLinkedIn/CriativosLinkedin"
 import GoogleSearch from "./pages/GoogleSearch/GoogleSearch"
 import Glossario from "./pages/Glossario/Glossario"
 import AnaliseSemanal from "./pages/AnaliseSemanal/AnaliseSemanal"
-import Organico from "./pages/Organico/Organico"
+import OrganicoInstagram from "./pages/OrganicoInstagram/OrganicoInstagram"
+import OrganicoFacebook from "./pages/OrganicoFacebook/OrganicoFacebook"
+import OrganicoLinkedIn from "./pages/OrganicoLinkedIn/OrganicoLinkedIn"
 import "./App.css"
 
 function App() {
@@ -37,7 +39,9 @@ function App() {
             <Route path="/criativos-linkedin" element={<CriativosLinkedIn />} />
             <Route path="/google-search" element={<GoogleSearch />} />
             <Route path="/analise-semanal" element={<AnaliseSemanal />} />
-            <Route path="/organico" element={<Organico />} />
+            <Route path="/organico-instagram" element={<OrganicoInstagram />} />
+            <Route path="/organico-facebook" element={<OrganicoFacebook />} />
+            <Route path="/organico-linkedin" element={<OrganicoLinkedIn />} />
             <Route path="/glossario" element={<Glossario />} />
           </Routes>
         </Layout>

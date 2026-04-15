@@ -111,6 +111,25 @@ interface PracasCategorized {
   "Cidades": string[]
 }
 
+// Mapa de número do mês para nome em português
+const MESES: Record<string, string> = {
+  "01": "Janeiro", "02": "Fevereiro", "03": "Março", "04": "Abril",
+  "05": "Maio", "06": "Junho", "07": "Julho", "08": "Agosto",
+  "09": "Setembro", "10": "Outubro", "11": "Novembro", "12": "Dezembro",
+}
+
+// Extrai o número do mês de strings como "10/03", "10/03/2026", "2026-03-10"
+const extrairMes = (inicio: string): string => {
+  if (!inicio) return ""
+  // Formato DD/MM ou DD/MM/YYYY
+  const partes = inicio.split("/")
+  if (partes.length >= 2) return partes[1].padStart(2, "0").substring(0, 2)
+  // Formato YYYY-MM-DD
+  const iso = inicio.split("-")
+  if (iso.length === 3) return iso[1].padStart(2, "0")
+  return ""
+}
+
 const VeiculacaoOffline: React.FC = () => {
   const { data, loading, error } = useOfflineData()
   const [expandedMeios, setExpandedMeios] = useState<{ [key: string]: boolean }>({})
@@ -120,33 +139,32 @@ const VeiculacaoOffline: React.FC = () => {
   // Estados para filtros
   const [filtroCampanha, setFiltroCampanha] = useState<string>("")
   const [filtroPraca, setFiltroPraca] = useState<string>("")
+  const [filtroMes, setFiltroMes] = useState<string>("")
 
   // Processar dados da API
   const processedData = useMemo(() => {
-    if (!data?.data?.values || data.data.values.length <= 1) {
-      return {
-        meios: {},
-        totais: { campanhas: 0, veiculos: 0, insercoes: 0, impactos: 0, investimento: 0 },
-        campanhas: [],
-        campanhasData: [],
-        pracas: [],
-        pracasCategorized: {
-          "Abrangência": [],
-          "Regiões": [],
-          "Estados": [],
-          "Cidades": []
-        },
-        tiposCompra: new Set<string>()
-      }
+    const empty = {
+      meios: {},
+      totais: { campanhas: 0, veiculos: 0, insercoes: 0, impactos: 0, investimento: 0 },
+      campanhas: [] as string[],
+      campanhasData: [] as CampanhaData[],
+      pracas: [] as string[],
+      pracasCategorized: { "Abrangência": [], "Regiões": [], "Estados": [], "Cidades": [] } as PracasCategorized,
+      tiposCompra: new Set<string>(),
+      meses: [] as string[],           // lista ordenada de meses disponíveis (ex: ["02","03"])
+      mesesMeios: {} as Record<string, Set<string>>, // mes -> Set de meios ativos
     }
+
+    if (!data?.data?.values || data.data.values.length <= 1) return empty
 
     const meiosData: { [key: string]: MeioData } = {}
     const campanhasSet = new Set<string>()
     const pracasSet = new Set<string>()
     const veiculosSet = new Set<string>()
     const tiposCompraSet = new Set<string>()
+    const mesesSet = new Set<string>()
+    const mesesMeios: Record<string, Set<string>> = {}
 
-    // Conjuntos separados para os dados filtrados
     const campanhasFiltradas = new Set<string>()
     const veiculosFiltrados = new Set<string>()
 
@@ -157,31 +175,36 @@ const VeiculacaoOffline: React.FC = () => {
     const headers = data.data.values[0]
     const rows = data.data.values.slice(1)
 
-    // Mapear índices das colunas
-    const agenciaIndex = -1 // coluna não existe na nova API
-    const campanhaIndex = headers.indexOf("CAMPANHA")
-    const meioIndex = headers.indexOf("MEIO")
-    const pracaIndex = headers.indexOf("PRAÇA")
-    const veiculoIndex = headers.indexOf("VEÍCULO")
+    const campanhaIndex   = headers.indexOf("CAMPANHA")
+    const meioIndex       = headers.indexOf("MEIO")
+    const pracaIndex      = headers.indexOf("PRAÇA")
+    const veiculoIndex    = headers.indexOf("VEÍCULO")
     const impressoesIndex = headers.indexOf("IMPRESSÕES / CLIQUES / DIÁRIAS")
     const tipoCompraIndex = headers.indexOf("TIPO DE COMPRA")
-    const valorDesembolsoIndex = headers.indexOf("VALOR DESEMBOLSO")
+    const valorIndex      = headers.indexOf("VALOR DESEMBOLSO")
+    const inicioIndex     = headers.indexOf("INÍCIO")
 
     rows.forEach((row: string[]) => {
-      const campanha = row[campanhaIndex] || ""
-      const meio = row[meioIndex] || ""
-      const praca = row[pracaIndex] || ""
-      const veiculo = row[veiculoIndex] || ""
-      const impressoes = row[impressoesIndex] || "0"
-      const tipoCompra = row[tipoCompraIndex] || ""
-      const valorDesembolso = row[valorDesembolsoIndex] || "0"
+      const campanha      = row[campanhaIndex] || ""
+      const meio          = row[meioIndex] || ""
+      const praca         = row[pracaIndex] || ""
+      const veiculo       = row[veiculoIndex] || ""
+      const impressoes    = row[impressoesIndex] || "0"
+      const tipoCompra    = row[tipoCompraIndex] || ""
+      const valorDesembolso = row[valorIndex] || "0"
+      const inicio        = inicioIndex >= 0 ? (row[inicioIndex] || "") : ""
+      const mes           = extrairMes(inicio)
 
       if (!meio || !veiculo) return
-
-      // Filtrar dados de Internet
       if (meio.toLowerCase() === "internet") return
 
-      // Adicionar aos conjuntos para filtros
+      // Coletar meses e meios por mês (antes dos filtros)
+      if (mes) {
+        mesesSet.add(mes)
+        if (!mesesMeios[mes]) mesesMeios[mes] = new Set()
+        mesesMeios[mes].add(meio)
+      }
+
       if (campanha) campanhasSet.add(campanha)
       if (praca) pracasSet.add(praca)
       if (veiculo) veiculosSet.add(veiculo)
@@ -190,87 +213,44 @@ const VeiculacaoOffline: React.FC = () => {
       // Aplicar filtros
       if (filtroCampanha && campanha !== filtroCampanha) return
       if (filtroPraca && praca !== filtroPraca) return
+      if (filtroMes && mes !== filtroMes) return
 
-      // Adicionar aos conjuntos filtrados (apenas dados que passaram pelos filtros)
       if (campanha) campanhasFiltradas.add(campanha)
       if (veiculo) veiculosFiltrados.add(veiculo)
 
-      const insercoesNum = parseNumero(impressoes)
-      const impactosNum = 0 // Não temos mais a coluna de impactos na nova API
+      const insercoesNum   = parseNumero(impressoes)
       const investimentoNum = parseCurrency(valorDesembolso)
 
-      totalInsercoes += insercoesNum
-      totalImpactos += impactosNum
+      totalInsercoes   += insercoesNum
       totalInvestimento += investimentoNum
 
-      // Estrutura: Meio -> Praça -> Veículo
       if (!meiosData[meio]) {
-        meiosData[meio] = {
-          nome: meio,
-          pracas: {},
-          totalInsercoes: 0,
-          totalImpactos: 0,
-          totalInvestimento: 0
-        }
+        meiosData[meio] = { nome: meio, pracas: {}, totalInsercoes: 0, totalImpactos: 0, totalInvestimento: 0 }
       }
 
       const pracaKey = praca
       if (!meiosData[meio].pracas[pracaKey]) {
-        meiosData[meio].pracas[pracaKey] = {
-          nome: praca,
-          uf: "",
-          veiculos: {},
-          totalInsercoes: 0,
-          totalImpactos: 0,
-          totalInvestimento: 0
-        }
+        meiosData[meio].pracas[pracaKey] = { nome: praca, uf: "", veiculos: {}, totalInsercoes: 0, totalImpactos: 0, totalInvestimento: 0 }
       }
 
       if (!meiosData[meio].pracas[pracaKey].veiculos[veiculo]) {
-        meiosData[meio].pracas[pracaKey].veiculos[veiculo] = {
-          campanha: campanha,
-          insercoes: 0,
-          impactos: 0,
-          investimento: 0,
-          tipoCompra: tipoCompra
-        }
+        meiosData[meio].pracas[pracaKey].veiculos[veiculo] = { campanha, insercoes: 0, impactos: 0, investimento: 0, tipoCompra }
       }
 
       meiosData[meio].totalInsercoes += insercoesNum
-      meiosData[meio].totalImpactos += impactosNum
       meiosData[meio].totalInvestimento += investimentoNum
       meiosData[meio].pracas[pracaKey].totalInsercoes += insercoesNum
-      meiosData[meio].pracas[pracaKey].totalImpactos += impactosNum
       meiosData[meio].pracas[pracaKey].totalInvestimento += investimentoNum
       meiosData[meio].pracas[pracaKey].veiculos[veiculo].insercoes += insercoesNum
-      meiosData[meio].pracas[pracaKey].veiculos[veiculo].impactos += impactosNum
       meiosData[meio].pracas[pracaKey].veiculos[veiculo].investimento += investimentoNum
     })
 
     // Categorizar praças
-    const pracasCategorized: PracasCategorized = {
-      "Abrangência": [],
-      "Regiões": [],
-      "Estados": [],
-      "Cidades": []
-    }
-
+    const pracasCategorized: PracasCategorized = { "Abrangência": [], "Regiões": [], "Estados": [], "Cidades": [] }
     Array.from(pracasSet).forEach((praca) => {
-      const categorized = categorizarPraca(praca)
-      const [categoria, valor] = categorized.split("|")
-
-      if (categoria === "Abrangência") {
-        pracasCategorized["Abrangência"].push(valor)
-      } else if (categoria === "Regiões") {
-        pracasCategorized["Regiões"].push(valor)
-      } else if (categoria === "Estados") {
-        pracasCategorized["Estados"].push(valor)
-      } else if (categoria === "Cidades") {
-        pracasCategorized["Cidades"].push(valor)
-      }
+      const [categoria, valor] = categorizarPraca(praca).split("|")
+      if (categoria in pracasCategorized) (pracasCategorized as any)[categoria].push(valor)
     })
-
-    // Ordenar cada categoria
     pracasCategorized["Abrangência"].sort()
     pracasCategorized["Regiões"].sort()
     pracasCategorized["Estados"].sort()
@@ -278,79 +258,56 @@ const VeiculacaoOffline: React.FC = () => {
 
     // Processar dados por campanha
     const campanhasMap = new Map<string, CampanhaData>()
-
     rows.forEach((row: string[]) => {
-      const campanha = row[campanhaIndex] || ""
-      const meio = row[meioIndex] || ""
-      const veiculo = row[veiculoIndex] || ""
+      const campanha   = row[campanhaIndex] || ""
+      const meio       = row[meioIndex] || ""
+      const veiculo    = row[veiculoIndex] || ""
       const impressoes = row[impressoesIndex] || "0"
-      const valorDesembolso = row[valorDesembolsoIndex] || "0"
+      const valorDesembolso = row[valorIndex] || "0"
+      const inicio     = inicioIndex >= 0 ? (row[inicioIndex] || "") : ""
+      const mes        = extrairMes(inicio)
 
       if (!campanha || !meio || !veiculo) return
       if (meio.toLowerCase() === "internet") return
-
-      // Aplicar filtros
       if (filtroCampanha && campanha !== filtroCampanha) return
       if (filtroPraca && row[pracaIndex] !== filtroPraca) return
+      if (filtroMes && mes !== filtroMes) return
 
-      const insercoesNum = parseNumero(impressoes)
+      const insercoesNum   = parseNumero(impressoes)
       const investimentoNum = parseCurrency(valorDesembolso)
 
       if (!campanhasMap.has(campanha)) {
-        campanhasMap.set(campanha, {
-          nome: campanha,
-          meios: {},
-          totalInsercoes: 0,
-          totalInvestimento: 0,
-          totalVeiculos: 0
-        })
+        campanhasMap.set(campanha, { nome: campanha, meios: {}, totalInsercoes: 0, totalInvestimento: 0, totalVeiculos: 0 })
       }
-
-      const campanhaData = campanhasMap.get(campanha)!
-
-      if (!campanhaData.meios[meio]) {
-        campanhaData.meios[meio] = {
-          insercoes: 0,
-          investimento: 0,
-          veiculos: new Set<string>()
-        }
-      }
-
-      campanhaData.meios[meio].insercoes += insercoesNum
-      campanhaData.meios[meio].investimento += investimentoNum
-      campanhaData.meios[meio].veiculos.add(veiculo)
-      campanhaData.totalInsercoes += insercoesNum
-      campanhaData.totalInvestimento += investimentoNum
+      const cd = campanhasMap.get(campanha)!
+      if (!cd.meios[meio]) cd.meios[meio] = { insercoes: 0, investimento: 0, veiculos: new Set<string>() }
+      cd.meios[meio].insercoes  += insercoesNum
+      cd.meios[meio].investimento += investimentoNum
+      cd.meios[meio].veiculos.add(veiculo)
+      cd.totalInsercoes   += insercoesNum
+      cd.totalInvestimento += investimentoNum
     })
 
-    // Calcular total de veículos únicos por campanha
     campanhasMap.forEach((campanha) => {
-      const veiculosSet = new Set<string>()
-      Object.values(campanha.meios).forEach((meio) => {
-        meio.veiculos.forEach((v) => veiculosSet.add(v))
-      })
-      campanha.totalVeiculos = veiculosSet.size
+      const vs = new Set<string>()
+      Object.values(campanha.meios).forEach((m) => m.veiculos.forEach((v) => vs.add(v)))
+      campanha.totalVeiculos = vs.size
     })
 
-    // Converter para array e ordenar por investimento
-    const campanhasArray = Array.from(campanhasMap.values()).sort((a, b) => b.totalInvestimento - a.totalInvestimento)
+    const mesesOrdenados = Array.from(mesesSet).sort()
 
     return {
       meios: meiosData,
-      totais: {
-        campanhas: campanhasFiltradas.size,
-        veiculos: veiculosFiltrados.size,
-        insercoes: totalInsercoes,
-        impactos: totalImpactos,
-        investimento: totalInvestimento
-      },
+      totais: { campanhas: campanhasFiltradas.size, veiculos: veiculosFiltrados.size, insercoes: totalInsercoes, impactos: 0, investimento: totalInvestimento },
       campanhas: Array.from(campanhasSet).sort(),
-      campanhasData: campanhasArray,
+      campanhasData: Array.from(campanhasMap.values()).sort((a, b) => b.totalInvestimento - a.totalInvestimento),
       pracas: Array.from(pracasSet).sort(),
-      pracasCategorized: pracasCategorized,
-      tiposCompra: tiposCompraSet
+      pracasCategorized,
+      tiposCompra: tiposCompraSet,
+      meses: mesesOrdenados,
+      mesesMeios,
     }
-  }, [data, filtroCampanha, filtroPraca])
+  }, [data, filtroCampanha, filtroPraca, filtroMes])
 
   const toggleMeio = (meio: string) => {
     setExpandedMeios((prev) => ({ ...prev, [meio]: !prev[meio] }))
@@ -364,6 +321,7 @@ const VeiculacaoOffline: React.FC = () => {
   const limparFiltros = () => {
     setFiltroCampanha("")
     setFiltroPraca("")
+    setFiltroMes("")
   }
 
   if (loading) {
@@ -406,6 +364,20 @@ const VeiculacaoOffline: React.FC = () => {
               {processedData.campanhas.map((campanha) => (
                 <option key={campanha} value={campanha}>
                   {campanha}
+                </option>
+              ))}
+            </select>
+
+            {/* Filtro Mês */}
+            <select
+              value={filtroMes}
+              onChange={(e) => setFiltroMes(e.target.value)}
+              className="text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+            >
+              <option value="">Mês: Todos</option>
+              {processedData.meses.map((mes) => (
+                <option key={mes} value={mes}>
+                  {MESES[mes] || mes}
                 </option>
               ))}
             </select>
@@ -476,6 +448,50 @@ const VeiculacaoOffline: React.FC = () => {
         ))}
       </div>
 
+      {/* Divisão por Mês */}
+      <div className="card-overlay rounded-2xl shadow-lg px-5 py-4">
+        <h2 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+          <Radio className="w-4 h-4 text-blue-600" />
+          Veiculação por Mês
+        </h2>
+        <div className="grid grid-cols-3 gap-3">
+          {processedData.meses.length === 0 ? (
+            <p className="text-sm text-gray-500 col-span-3">Nenhum dado de mês disponível.</p>
+          ) : (
+            processedData.meses.map((mes) => {
+              const meiosMes = Array.from(processedData.mesesMeios[mes] || new Set<string>())
+              const ativo = !filtroMes || filtroMes === mes
+              return (
+                <button
+                  key={mes}
+                  onClick={() => setFiltroMes(filtroMes === mes ? "" : mes)}
+                  className={`text-left rounded-xl px-4 py-3 transition-all border-2 ${
+                    filtroMes === mes
+                      ? "bg-blue-50 border-blue-400"
+                      : ativo
+                      ? "bg-slate-50 border-transparent hover:border-slate-300"
+                      : "bg-slate-50 border-transparent opacity-40"
+                  }`}
+                >
+                  <p className="text-xs font-bold text-gray-700 mb-1">{MESES[mes] || mes}</p>
+                  {meiosMes.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic">Nenhuma veiculação</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1">
+                      {meiosMes.map((m) => (
+                        <span key={m} className="text-[10px] bg-blue-100 text-blue-700 rounded-full px-2 py-0.5 font-medium">
+                          {m}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </button>
+              )
+            })
+          )}
+        </div>
+      </div>
+
       {/* Grid: Campanhas (40%) + Meios (60%) */}
       <div className="grid grid-cols-5 gap-4">
         {/* Card de Campanhas com Accordion */}
@@ -485,7 +501,7 @@ const VeiculacaoOffline: React.FC = () => {
               <Megaphone className="w-4 h-4 mr-2 text-blue-600" />
               Campanhas ({processedData.campanhasData.length})
             </h2>
-            {(filtroCampanha || filtroPraca) && (
+            {(filtroCampanha || filtroPraca || filtroMes) && (
               <button
                 onClick={limparFiltros}
                 className="text-xs text-blue-600 hover:text-blue-800 underline"
@@ -598,7 +614,7 @@ const VeiculacaoOffline: React.FC = () => {
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-2">
-            {Object.values(processedData.meios).map((meio) => (
+            {(Object.values(processedData.meios) as MeioData[]).map((meio) => (
               <div key={meio.nome} className="border border-gray-200 rounded-2xl overflow-hidden">
                 <div
                   className="flex items-center justify-between p-3 bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors"
@@ -626,7 +642,7 @@ const VeiculacaoOffline: React.FC = () => {
 
                 {expandedMeios[meio.nome] && (
                   <div className="p-3 space-y-2 bg-white">
-                    {Object.entries(meio.pracas).map(([pracaKey, praca]) => (
+                    {(Object.entries(meio.pracas) as [string, PracaUFData][]).map(([pracaKey, praca]) => (
                       <div key={pracaKey} className="border border-gray-100 rounded-xl">
                         <div
                           className="flex items-center justify-between p-2 bg-gray-25 hover:bg-gray-50 transition-colors cursor-pointer"
@@ -666,7 +682,7 @@ const VeiculacaoOffline: React.FC = () => {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {Object.entries(praca.veiculos).map(([veiculoNome, veiculo]) => (
+                                  {(Object.entries(praca.veiculos) as [string, VeiculoData][]).map(([veiculoNome, veiculo]) => (
                                     <tr
                                       key={veiculoNome}
                                       className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50"

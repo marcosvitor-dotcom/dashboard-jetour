@@ -127,6 +127,27 @@ export const fetchInstagramFollows = async (): Promise<ConsolidadoData> => {
   return response.data
 }
 
+export const fetchInstagramMedia = async (): Promise<ConsolidadoData> => {
+  const response = await consolidadoApi.get(
+    `/google/sheets/${SHEET_ID}/data?sheet=Instagram%20-%20Media&range=A1%3AAZ20000`
+  )
+  return response.data
+}
+
+export const fetchInstagramStory = async (): Promise<ConsolidadoData> => {
+  const response = await consolidadoApi.get(
+    `/google/sheets/${SHEET_ID}/data?sheet=Instagram%20-%20Story&range=A1%3AAZ20000`
+  )
+  return response.data
+}
+
+export const fetchInstagramVideo = async (): Promise<ConsolidadoData> => {
+  const response = await consolidadoApi.get(
+    `/google/sheets/${SHEET_ID}/data?sheet=Instagram%20-%20Video&range=A1%3AAZ20000`
+  )
+  return response.data
+}
+
 export const fetchFacebookPosts = async (): Promise<ConsolidadoData> => {
   const response = await consolidadoApi.get(
     `/google/sheets/${SHEET_ID}/data?sheet=Facebook%20-%20Post&range=A1%3AAZ20000`
@@ -141,9 +162,47 @@ export const fetchFacebookFollows = async (): Promise<ConsolidadoData> => {
   return response.data
 }
 
+export const fetchLinkedInOrgFollowers = async (): Promise<ConsolidadoData> => {
+  const response = await consolidadoApi.get(
+    `/google/sheets/${SHEET_ID}/data?sheet=Linkedin%20-%20Follower&range=A1%3AAZ20000`
+  )
+  return response.data
+}
+
+export const fetchLinkedInOrgFollowerRegion = async (): Promise<ConsolidadoData> => {
+  const response = await consolidadoApi.get(
+    `/google/sheets/${SHEET_ID}/data?sheet=Linkedin%20-%20Follower%20Region&range=A1%3AAZ20000`
+  )
+  return response.data
+}
+
+export const fetchLinkedInOrgPosts = async (): Promise<ConsolidadoData> => {
+  const response = await consolidadoApi.get(
+    `/google/sheets/${SHEET_ID}/data?sheet=Linkedin%20-%20Posts&range=A1%3AAZ20000`
+  )
+  return response.data
+}
+
+export const fetchLinkedInOrgPageSeniority = async (): Promise<ConsolidadoData> => {
+  const response = await consolidadoApi.get(
+    `/google/sheets/${SHEET_ID}/data?sheet=Linkedin%20-%20Views%20Page%20Seniority&range=A1%3AAZ20000`
+  )
+  return response.data
+}
+
+export const fetchLinkedInOrgPageRegion = async (): Promise<ConsolidadoData> => {
+  const response = await consolidadoApi.get(
+    `/google/sheets/${SHEET_ID}/data?sheet=Linkedin%20-%20Organico%20Views%20Page%20Region&range=A1%3AAZ20000`
+  )
+  return response.data
+}
+
 export const useOrganicData = () => {
   const [igPosts, setIgPosts] = useState<ConsolidadoData | null>(null)
   const [igFollows, setIgFollows] = useState<ConsolidadoData | null>(null)
+  const [igMedia, setIgMedia] = useState<ConsolidadoData | null>(null)
+  const [igStory, setIgStory] = useState<ConsolidadoData | null>(null)
+  const [igVideo, setIgVideo] = useState<ConsolidadoData | null>(null)
   const [fbPosts, setFbPosts] = useState<ConsolidadoData | null>(null)
   const [fbFollows, setFbFollows] = useState<ConsolidadoData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -152,14 +211,20 @@ export const useOrganicData = () => {
   const loadData = React.useCallback(async () => {
     try {
       setLoading(true)
-      const [ip, ifo, fp, ff] = await Promise.all([
+      const [ip, ifo, im, is_, iv, fp, ff] = await Promise.all([
         fetchInstagramPosts(),
         fetchInstagramFollows(),
+        fetchInstagramMedia(),
+        fetchInstagramStory(),
+        fetchInstagramVideo(),
         fetchFacebookPosts(),
         fetchFacebookFollows(),
       ])
       setIgPosts(ip)
       setIgFollows(ifo)
+      setIgMedia(im)
+      setIgStory(is_)
+      setIgVideo(iv)
       setFbPosts(fp)
       setFbFollows(ff)
       setError(null)
@@ -171,7 +236,43 @@ export const useOrganicData = () => {
   }, [])
 
   React.useEffect(() => { loadData() }, [loadData])
-  return { igPosts, igFollows, fbPosts, fbFollows, loading, error, refetch: loadData }
+  return { igPosts, igFollows, igMedia, igStory, igVideo, fbPosts, fbFollows, loading, error, refetch: loadData }
+}
+
+export const useLinkedInOrganicData = () => {
+  const [liFollowers, setLiFollowers] = useState<ConsolidadoData | null>(null)
+  const [liFollowerRegion, setLiFollowerRegion] = useState<ConsolidadoData | null>(null)
+  const [liPosts, setLiPosts] = useState<ConsolidadoData | null>(null)
+  const [liPageSeniority, setLiPageSeniority] = useState<ConsolidadoData | null>(null)
+  const [liPageRegion, setLiPageRegion] = useState<ConsolidadoData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
+
+  const loadData = React.useCallback(async () => {
+    try {
+      setLoading(true)
+      const [f, fr, p, ps, pr] = await Promise.all([
+        fetchLinkedInOrgFollowers(),
+        fetchLinkedInOrgFollowerRegion(),
+        fetchLinkedInOrgPosts(),
+        fetchLinkedInOrgPageSeniority(),
+        fetchLinkedInOrgPageRegion(),
+      ])
+      setLiFollowers(f)
+      setLiFollowerRegion(fr)
+      setLiPosts(p)
+      setLiPageSeniority(ps)
+      setLiPageRegion(pr)
+      setError(null)
+    } catch (err) {
+      setError(err as Error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => { loadData() }, [loadData])
+  return { liFollowers, liFollowerRegion, liPosts, liPageSeniority, liPageRegion, loading, error, refetch: loadData }
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
