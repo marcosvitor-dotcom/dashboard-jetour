@@ -11,8 +11,9 @@ import {
   BarChart3,
   Users,
   Globe,
+  Search,
 } from "lucide-react"
-import { useConsolidadoGeral, parseBrazilianCurrency, useGA4, useGoogleSearchData } from "../../services/consolidadoApi"
+import { useConsolidadoGeral, parseBrazilianCurrency, useGA4, useGoogleSearchData, useGA4Leads } from "../../services/consolidadoApi"
 import Loading from "../../components/Loading/Loading"
 
 type MetricType = "impressions" | "clicks" | "videoViews" | "spent" | "leads" | "sessions"
@@ -27,6 +28,7 @@ const Capa: React.FC = () => {
   } = useConsolidadoGeral()
   const { data: ga4Data } = useGA4()
   const { data: searchData } = useGoogleSearchData()
+  const { data: ga4LeadsData } = useGA4Leads()
 
   const [selectedMetric, setSelectedMetric] = useState<MetricType>("impressions")
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null)
@@ -137,6 +139,61 @@ const Capa: React.FC = () => {
     return base
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consolidadoData, searchData, activeStart, activeEnd])
+
+  // ── Total de Leads cruzado: consolidado + extras do GA4 ──────────────────
+  const totalLeadsCruzado = useMemo(() => {
+    // Plataformas já rastreadas pelo pixel no consolidado
+    const trackedPlatforms = new Set<string>()
+    if (consolidadoData?.success && consolidadoData?.data?.values && consolidadoData.data.values.length > 1) {
+      const headers = consolidadoData.data.values[0]
+      const veiculoIdx = headers.indexOf("Veículo")
+      const leadsIdx = headers.indexOf("Leads")
+      const dateIdx = headers.indexOf("Date")
+      consolidadoData.data.values.slice(1).forEach((row) => {
+        if (activeStartDate && activeEndDate && dateIdx !== -1 && row[dateIdx]) {
+          const d = parseRowDate(row[dateIdx])
+          if (!d || d < activeStartDate || d > activeEndDate) return
+        }
+        const leads = parseFloat(row[leadsIdx] || "0") || 0
+        if (leads > 0 && row[veiculoIdx]) trackedPlatforms.add(row[veiculoIdx].trim().toLowerCase())
+      })
+    }
+
+    const normalizeSource = (src: string): string => {
+      const s = src.toLowerCase()
+      if (["ig", "l.instagram.com", "instagram.com", "instagram"].includes(s)) return "instagram"
+      if (["fb", "l.facebook.com", "m.facebook.com", "facebook.com", "meta", "facebook"].includes(s)) return "meta"
+      if (["google", "google ads", "cpc"].includes(s)) return "google"
+      if (s === "linkedin-traf" || s === "linkedin") return "linkedin"
+      if (s === "kwai.com" || s === "kwai") return "kwai"
+      if (s === "ads.tiktok.com" || s === "tiktok") return "tiktok"
+      if (["tagassistant.google.com", "gtm_teste"].includes(s)) return "testes"
+      return s
+    }
+
+    // GA4: soma fontes que NÃO estão cobertas pelo pixel do consolidado
+    let extra = 0
+    if (ga4LeadsData?.success && ga4LeadsData?.data?.values && ga4LeadsData.data.values.length > 1) {
+      const headers = ga4LeadsData.data.values[0]
+      const srcIdx = headers.indexOf("Session source")
+      const cntIdx = headers.indexOf("Event count")
+      const dateIdx = headers.indexOf("Date")
+      ga4LeadsData.data.values.slice(1).forEach((row) => {
+        const normalized = normalizeSource(row[srcIdx] || "")
+        if (normalized === "testes") return
+        // Pula fontes já cobertas pelo pixel
+        if (trackedPlatforms.has(normalized)) return
+        if (activeStartDate && activeEndDate && dateIdx !== -1 && row[dateIdx]) {
+          const d = new Date(row[dateIdx] + "T00:00:00")
+          if (isNaN(d.getTime()) || d < activeStartDate || d > activeEndDate) return
+        }
+        extra += parseInt(row[cntIdx] || "0", 10) || 0
+      })
+    }
+
+    return totaisGerais.leads + extra
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consolidadoData, ga4LeadsData, totaisGerais.leads, activeStart, activeEnd])
 
   // ── Total de Sessões do GA4 (com filtro de data) ──────────────────────────
   const totalSessoesGA = useMemo(() => {
@@ -255,9 +312,95 @@ const Capa: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCampaign, consolidadoData, last7Days, activeStart, activeEnd, isFiltered, ga4SessionsByDay])
 
+  // ── Injetar Google Search no gráfico por dia ─────────────────────────────
+  const filteredLast7DaysWithGS = useMemo(() => {
+    if (!searchData?.success || !searchData?.data?.values || searchData.data.values.length < 2) {
+      return filteredLast7Days
+    }
+
+    const headers = searchData.data.values[0]
+    const rows = searchData.data.values.slice(1)
+    const dayIdx     = headers.indexOf("Day")
+    const costIdx    = headers.indexOf("Cost (Spend)")
+    const clicksIdx  = headers.indexOf("Clicks")
+    const impIdx     = headers.indexOf("Impressions")
+    const parseN = (v: string) => parseFloat((v || "").replace(/[R$\s.]/g, "").replace(",", ".")) || 0
+    const parseI = (v: string) => parseInt((v || "").replace(/[.\s]/g, "").replace(",", "")) || 0
+
+    // Determina janela do gráfico (mesmo cálculo de filteredLast7Days)
+    let chartStart: Date
+    let chartEnd: Date
+    const activeStartDate2 = activeStart ? new Date(activeStart + "T00:00:00") : null
+    const activeEndDate2   = activeEnd   ? new Date(activeEnd   + "T00:00:00") : null
+    if (activeStartDate2 && activeEndDate2 && isFiltered) {
+      chartStart = activeStartDate2
+      chartEnd   = activeEndDate2
+    } else {
+      chartEnd = new Date()
+      chartEnd.setDate(chartEnd.getDate() - 1)
+      chartEnd.setHours(0, 0, 0, 0)
+      chartStart = new Date(chartEnd)
+      chartStart.setDate(chartEnd.getDate() - 6)
+      chartStart.setHours(0, 0, 0, 0)
+    }
+
+    // Agrega GS por dia no formato dd/mm/yyyy
+    const gsMap = new Map<string, { spent: number; clicks: number; impressions: number }>()
+    rows.forEach((row: string[]) => {
+      if (!row[dayIdx]) return
+      const rawDate = row[dayIdx] as string
+      // GS usa dd/mm/yyyy
+      let dateKey = rawDate
+      let rowDate: Date | null = null
+      const parts = rawDate.split("/")
+      if (parts.length === 3) {
+        rowDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]))
+        dateKey = rawDate
+      }
+      if (!rowDate) return
+      rowDate.setHours(0, 0, 0, 0)
+      if (rowDate < chartStart || rowDate > chartEnd) return
+
+      if (!gsMap.has(dateKey)) gsMap.set(dateKey, { spent: 0, clicks: 0, impressions: 0 })
+      const m = gsMap.get(dateKey)!
+      m.spent       += parseN(row[costIdx]   || "0")
+      m.clicks      += parseI(row[clicksIdx] || "0")
+      m.impressions += parseI(row[impIdx]    || "0")
+    })
+
+    if (gsMap.size === 0) return filteredLast7Days
+
+    // Mescla com filteredLast7Days
+    const merged = new Map(filteredLast7Days.map((d) => [d.date, { ...d }]))
+    gsMap.forEach((gs, dateKey) => {
+      if (merged.has(dateKey)) {
+        const m = merged.get(dateKey)!
+        m.spent       += gs.spent
+        m.clicks      += gs.clicks
+        m.impressions += gs.impressions
+      } else {
+        merged.set(dateKey, {
+          date: dateKey,
+          impressions: gs.impressions,
+          clicks: gs.clicks,
+          videoViews: 0,
+          spent: gs.spent,
+          leads: 0,
+        })
+      }
+    })
+
+    return Array.from(merged.values()).sort((a, b) => {
+      const [dA, mA, yA] = a.date.split("/").map(Number)
+      const [dB, mB, yB] = b.date.split("/").map(Number)
+      return new Date(yA, mA - 1, dA).getTime() - new Date(yB, mB - 1, dB).getTime()
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredLast7Days, searchData, activeStart, activeEnd, isFiltered])
+
   // ── Big numbers dos últimos 7 dias ────────────────────────────────────────
   const last7Totals = useMemo(() => {
-    const totals = filteredLast7Days.reduce(
+    const totals = filteredLast7DaysWithGS.reduce(
       (acc, day) => ({
         spent: acc.spent + day.spent,
         impressions: acc.impressions + day.impressions,
@@ -271,11 +414,11 @@ const Capa: React.FC = () => {
     const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0
     const cpl = totals.leads > 0 ? totals.spent / totals.leads : 0
     return { ...totals, cpm, ctr, cpl }
-  }, [filteredLast7Days])
+  }, [filteredLast7DaysWithGS])
 
   // ── Gráfico ───────────────────────────────────────────────────────────────
   const chartData = useMemo(() => {
-    if (!filteredLast7Days.length) return []
+    if (!filteredLast7DaysWithGS.length) return []
     const labels: Record<MetricType, string> = {
       impressions: "Impressões",
       clicks: "Cliques",
@@ -287,10 +430,10 @@ const Capa: React.FC = () => {
     return [
       {
         id: labels[selectedMetric],
-        data: filteredLast7Days.map((day) => ({ x: day.date, y: (day as any)[selectedMetric] ?? 0 })),
+        data: filteredLast7DaysWithGS.map((day) => ({ x: day.date, y: (day as any)[selectedMetric] ?? 0 })),
       },
     ]
-  }, [filteredLast7Days, selectedMetric])
+  }, [filteredLast7DaysWithGS, selectedMetric])
 
   // Ticks do eixo X: limita a ~10 labels para não poluir
   const xTickValues = useMemo(() => {
@@ -332,6 +475,54 @@ const Capa: React.FC = () => {
 
   const activeCampaigns = campaigns.filter((c) => c.isActive)
 
+  // ── Campanhas ativas do Google Search ─────────────────────────────────────
+  const gsActiveCampaigns = useMemo(() => {
+    if (!searchData?.success || !searchData?.data?.values || searchData.data.values.length < 2) return []
+    const headers = searchData.data.values[0]
+    const rows = searchData.data.values.slice(1)
+    const campIdx    = headers.indexOf("Campaign Name")
+    const dayIdx     = headers.indexOf("Day")
+    const costIdx    = headers.indexOf("Cost (Spend)")
+    const clicksIdx  = headers.indexOf("Clicks")
+    const impIdx     = headers.indexOf("Impressions")
+    const parseN = (v: string) => parseFloat((v || "").replace(/[R$\s.]/g, "").replace(",", ".")) || 0
+    const parseI = (v: string) => parseInt((v || "").replace(/[.\s]/g, "").replace(",", "")) || 0
+
+    const today = new Date()
+    const sevenDaysAgo = new Date()
+    sevenDaysAgo.setDate(today.getDate() - 7)
+
+    const map = new Map<string, { name: string; spent: number; clicks: number; impressions: number; isActive: boolean }>()
+    rows.forEach((row: string[]) => {
+      const name = (row[campIdx] || "").trim()
+      if (!name) return
+      if (!map.has(name)) map.set(name, { name, spent: 0, clicks: 0, impressions: 0, isActive: false })
+      const m = map.get(name)!
+      const cost = parseN(row[costIdx] || "0")
+      const imp  = parseI(row[impIdx]  || "0")
+      m.spent       += cost
+      m.clicks      += parseI(row[clicksIdx] || "0")
+      m.impressions += imp
+      if (row[dayIdx]) {
+        const raw = (row[dayIdx] as string).trim()
+        let rowDate: Date | null = null
+        if (raw.includes("/")) {
+          // dd/mm/yyyy
+          const [d, mo, y] = raw.split("/")
+          rowDate = new Date(parseInt(y), parseInt(mo) - 1, parseInt(d))
+        } else if (raw.includes("-")) {
+          // yyyy-mm-dd
+          rowDate = new Date(raw + "T00:00:00")
+        }
+        if (rowDate && !isNaN(rowDate.getTime())) {
+          rowDate.setHours(0, 0, 0, 0)
+          if (rowDate >= sevenDaysAgo && rowDate <= today && (cost > 0 || imp > 0)) m.isActive = true
+        }
+      }
+    })
+    return Array.from(map.values()).filter((c) => c.isActive)
+  }, [searchData])
+
   // ── Ícones por plataforma (reutilizados do Sidebar) ───────────────────────
   const platformIcon = (platform: string) => {
     const p = platform.toLowerCase()
@@ -359,6 +550,9 @@ const Capa: React.FC = () => {
     if (p.includes("kwai")) {
       return <img className="w-3.5 h-3.5" src="https://www.svgrepo.com/show/517319/kwai.svg" alt="Kwai" />
     }
+    if (p === "google search") {
+      return <Search className="w-3.5 h-3.5" />
+    }
     if (p.includes("google") || p.includes("youtube")) {
       return (
         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
@@ -378,6 +572,7 @@ const Capa: React.FC = () => {
     if (p.includes("tiktok")) return "bg-gray-900 text-white"
     if (p.includes("linkedin")) return "bg-blue-100 text-blue-700"
     if (p.includes("kwai")) return "bg-orange-100 text-orange-600"
+    if (p === "google search") return "bg-green-100 text-green-700"
     if (p.includes("google")) return "bg-red-100 text-red-600"
     if (p.includes("youtube")) return "bg-red-100 text-red-600"
     return "bg-gray-100 text-gray-600"
@@ -415,7 +610,7 @@ const Capa: React.FC = () => {
 
         <div className="absolute bottom-0 left-0 right-0 p-4">
           <div className="bg-white/95 backdrop-blur-sm rounded-xl p-4 shadow-lg max-w-2xl flex items-center gap-4">
-            <img src="/images/Jetour_logo.svg" alt="Jetour" className="h-8 object-contain" />
+            <img src="/images/LOGO_JETOUR.png" alt="Jetour" className="h-8 object-contain" />
             <div>
               <h1 className="text-2xl font-bold text-gray-900 leading-tight">Dashboard JETOUR</h1>
               <p className="text-sm text-gray-600">Visão consolidada de campanhas e resultados</p>
@@ -515,12 +710,12 @@ const Capa: React.FC = () => {
       {/* ── Big Numbers — Total Geral ─────────────────────────────────────── */}
       <div className="grid grid-cols-3 lg:grid-cols-6 gap-3">
         {[
-          { label: "Investimento Total", value: formatCurrency(totaisGerais.spent), icon: <DollarSign className="w-4 h-4" /> },
-          { label: "Impressões", value: formatNumber(totaisGerais.impressions), icon: <Eye className="w-4 h-4" /> },
-          { label: "Cliques", value: formatNumber(totaisGerais.clicks), icon: <MousePointerClick className="w-4 h-4" /> },
-          { label: "Visualizações", value: formatNumber(totaisGerais.videoViews), icon: <Play className="w-4 h-4" /> },
-          { label: "Leads", value: formatNumber(totaisGerais.leads), icon: <Users className="w-4 h-4" /> },
-          { label: "Sessões do GA", value: formatNumber(totalSessoesGA), icon: <Globe className="w-4 h-4" /> },
+          { label: "Investimento Total", value: formatCurrency(totaisGerais.spent),       icon: <DollarSign className="w-4 h-4" /> },
+          { label: "Impressões",         value: formatNumber(totaisGerais.impressions),    icon: <Eye className="w-4 h-4" /> },
+          { label: "Visualizações",      value: formatNumber(totaisGerais.videoViews),     icon: <Play className="w-4 h-4" /> },
+          { label: "Cliques",            value: formatNumber(totaisGerais.clicks),         icon: <MousePointerClick className="w-4 h-4" /> },
+          { label: "Sessões do GA",      value: formatNumber(totalSessoesGA),              icon: <Globe className="w-4 h-4" /> },
+          { label: "Leads",              value: formatNumber(totalLeadsCruzado),           icon: <Users className="w-4 h-4" /> },
         ].map((card) => (
           <div key={card.label} className="bg-slate-700/80 rounded-2xl px-3 py-3 flex flex-col gap-1 text-white">
             <div className="flex items-center gap-1.5 text-slate-300 text-xs">
@@ -645,12 +840,12 @@ const Capa: React.FC = () => {
             <BarChart3 className="w-4 h-4 text-green-600" />
             Campanhas Ativas
             <span className="ml-auto bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">
-              {activeCampaigns.length}
+              {activeCampaigns.length + gsActiveCampaigns.length}
             </span>
           </h2>
 
           <div className="overflow-y-auto space-y-2" style={{ maxHeight: "320px" }}>
-            {activeCampaigns.length === 0 && (
+            {activeCampaigns.length === 0 && gsActiveCampaigns.length === 0 && (
               <p className="text-sm text-gray-400 text-center mt-4">Nenhuma campanha ativa</p>
             )}
             {activeCampaigns.map((campaign, index) => (
@@ -671,7 +866,6 @@ const Capa: React.FC = () => {
                     <p className="text-xs font-medium text-gray-800 truncate" title={campaign.name}>
                       {campaign.name}
                     </p>
-                    {/* Ícones das plataformas */}
                     {campaign.platforms.size > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
                         {Array.from(campaign.platforms).map((platform) => (
@@ -692,6 +886,27 @@ const Capa: React.FC = () => {
                       {campaign.leads > 0 && (
                         <span className="text-xs text-pink-600 font-medium">{formatNumber(campaign.leads)} leads</span>
                       )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {gsActiveCampaigns.map((c, i) => (
+              <div key={`gs-${i}`} className="p-3 rounded-lg hover:bg-gray-50 border-2 border-transparent cursor-default">
+                <div className="flex items-start gap-2">
+                  <span className="mt-1 w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-gray-800 truncate" title={c.name}>{c.name}</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs bg-green-100 text-green-700">
+                        <Search className="w-3 h-3" />
+                        <span className="text-xs leading-none">Google Search</span>
+                      </span>
+                    </div>
+                    <div className="flex gap-3 mt-1">
+                      <span className="text-xs text-gray-500">{formatCurrency(c.spent)}</span>
+                      <span className="text-xs text-gray-400">{formatNumber(c.impressions)} imp.</span>
+                      <span className="text-xs text-gray-400">{formatNumber(c.clicks)} cliques</span>
                     </div>
                   </div>
                 </div>

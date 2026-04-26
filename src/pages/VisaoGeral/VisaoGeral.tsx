@@ -2,10 +2,10 @@
 
 import type React from "react"
 import { useState, useMemo } from "react"
-import { Calendar, Filter, DollarSign, Eye, MousePointer, TrendingUp, Users, BarChart3, Play } from "lucide-react"
+import { Calendar, Filter, DollarSign, Eye, MousePointer, TrendingUp, Users, BarChart3, Play, Search } from "lucide-react"
 import Loading from "../../components/Loading/Loading"
 import { useData } from "../../contexts/DataContext"
-import { parseBrazilianCurrency, parseBrazilianNumber } from "../../services/consolidadoApi"
+import { parseBrazilianCurrency, parseBrazilianNumber, useGoogleSearchData, useGA4Leads } from "../../services/consolidadoApi"
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -59,6 +59,9 @@ const PlatformIcon: React.FC<{ platform: string; className?: string }> = ({ plat
         <path d="M41,4H9C6.24,4,4,6.24,4,9v32c0,2.76,2.24,5,5,5h32c2.76,0,5-2.24,5-5V9C46,6.24,43.76,4,41,4z M17,20v19h-6V20H17z M11,14.47c0-1.4,1.2-2.47,3-2.47s2.93,1.07,3,2.47c0,1.4-1.12,2.53-3,2.53C12.2,17,11,15.87,11,14.47z M39,39h-6c0,0,0-9.26,0-10 c0-2-1-4-3.5-4.04h-0.08C27,24.96,26,27.02,26,29c0,0.91,0,10,0,10h-6V20h6v2.56c0,0,1.93-2.56,5.81-2.56 c3.97,0,7.19,2.73,7.19,8.26V39z" />
       </svg>
     )
+  }
+  if (p === "google search") {
+    return <Search className={className} />
   }
   if (p.includes("google")) {
     return (
@@ -140,8 +143,13 @@ const HBar: React.FC<{ data: ChartPoint[]; format?: (v: number) => string }> = (
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
+const parseN = (v: string) => parseFloat((v || "").replace(/[R$\s.]/g, "").replace(",", ".")) || 0
+const parseI = (v: string) => parseInt((v || "").replace(/[.\s]/g, "").replace(",", "")) || 0
+
 const VisaoGeral: React.FC = () => {
   const { data: apiData, campaigns, loading, error } = useData()
+  const { data: gsApiData } = useGoogleSearchData()
+  const { data: ga4LeadsData } = useGA4Leads()
 
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: "", end: "" })
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
@@ -207,10 +215,6 @@ const VisaoGeral: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allRows])
 
-  const availablePlatforms = useMemo(() => {
-    return Array.from(new Set(allRows.map((r) => r.platform))).sort()
-  }, [allRows])
-
   // ── Filter ──────────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     return allRows.filter((r) => {
@@ -222,26 +226,6 @@ const VisaoGeral: React.FC = () => {
       return true
     })
   }, [allRows, dateRange, selectedPlatforms, selectedCampaign])
-
-  // ── Totals ──────────────────────────────────────────────────────────────────
-  const totals = useMemo(() => {
-    const investment      = filtered.reduce((s, r) => s + r.cost, 0)
-    const impressions     = filtered.reduce((s, r) => s + r.impressions, 0)
-    const clicks          = filtered.reduce((s, r) => s + r.clicks, 0)
-    const videoPlays      = filtered.reduce((s, r) => s + r.videoPlays, 0)
-    const videoComp       = filtered.reduce((s, r) => s + r.videoCompletions, 0)
-    const leads           = filtered.reduce((s, r) => s + r.leads, 0)
-    const engagements     = filtered.reduce((s, r) => s + r.engagements, 0)
-
-    const cpm  = impressions > 0 ? investment / (impressions / 1000) : 0
-    const cpc  = clicks > 0 ? investment / clicks : 0
-    const cpl  = leads > 0 ? investment / leads : 0
-    const ctr  = impressions > 0 ? (clicks / impressions) * 100 : 0
-    const vtr  = videoPlays > 0 ? (videoComp / videoPlays) * 100 : 0
-    const cpv  = videoComp > 0 ? investment / videoComp : 0
-
-    return { investment, impressions, clicks, videoPlays, videoComp, leads, engagements, cpm, cpc, cpl, ctr, vtr, cpv }
-  }, [filtered])
 
   // ── Per-platform metrics ────────────────────────────────────────────────────
   const platformMetrics = useMemo<PlatformMetrics[]>(() => {
@@ -268,8 +252,136 @@ const VisaoGeral: React.FC = () => {
     return Object.values(map).sort((a, b) => b.impressions - a.impressions)
   }, [filtered])
 
+  // ── Google Search metrics ───────────────────────────────────────────────────
+  const gsMetrics = useMemo<PlatformMetrics | null>(() => {
+    if (!gsApiData?.success || !gsApiData?.data?.values || gsApiData.data.values.length < 2) return null
+    const headers = gsApiData.data.values[0]
+    const rows = gsApiData.data.values.slice(1)
+    const clicksIdx = headers.indexOf("Clicks")
+    const impIdx    = headers.indexOf("Impressions")
+    const costIdx   = headers.indexOf("Cost (Spend)")
+
+    let clicks = 0, impressions = 0, cost = 0
+    rows.forEach((row: string[]) => {
+      clicks      += parseI(row[clicksIdx] || "0")
+      impressions += parseI(row[impIdx]    || "0")
+      cost        += parseN(row[costIdx]   || "0")
+    })
+
+    if (impressions === 0 && clicks === 0 && cost === 0) return null
+    return {
+      platform: "Google Search",
+      impressions, cost, clicks,
+      videoPlays: 0, videoCompletions: 0,
+      leads: 0, engagements: 0,
+      color: "#34A853",
+    }
+  }, [gsApiData])
+
+  // Merge Google Search into platform list (respects selectedPlatforms filter)
+  const gsIncluded = selectedPlatforms.length === 0 || selectedPlatforms.includes("Google Search")
+
+  const availablePlatforms = useMemo(() => {
+    const platforms = Array.from(new Set(allRows.map((r) => r.platform)))
+    if (gsMetrics) platforms.push("Google Search")
+    return platforms.sort()
+  }, [allRows, gsMetrics])
+
+  // ── Totals (includes Google Search when applicable) ─────────────────────────
+  const totals = useMemo(() => {
+    let investment  = filtered.reduce((s, r) => s + r.cost, 0)
+    let impressions = filtered.reduce((s, r) => s + r.impressions, 0)
+    let clicks      = filtered.reduce((s, r) => s + r.clicks, 0)
+    const videoPlays  = filtered.reduce((s, r) => s + r.videoPlays, 0)
+    const videoComp   = filtered.reduce((s, r) => s + r.videoCompletions, 0)
+    const leads       = filtered.reduce((s, r) => s + r.leads, 0)
+    const engagements = filtered.reduce((s, r) => s + r.engagements, 0)
+
+    if (gsMetrics && gsIncluded) {
+      investment  += gsMetrics.cost
+      impressions += gsMetrics.impressions
+      clicks      += gsMetrics.clicks
+    }
+
+    const cpm  = impressions > 0 ? investment / (impressions / 1000) : 0
+    const cpc  = clicks > 0 ? investment / clicks : 0
+    const cpl  = leads > 0 ? investment / leads : 0
+    const ctr  = impressions > 0 ? (clicks / impressions) * 100 : 0
+    const vtr  = videoPlays > 0 ? (videoComp / videoPlays) * 100 : 0
+    const cpv  = videoComp > 0 ? investment / videoComp : 0
+
+    return { investment, impressions, clicks, videoPlays, videoComp, leads, engagements, cpm, cpc, cpl, ctr, vtr, cpv }
+  }, [filtered, gsMetrics, gsIncluded])
+
+  const allPlatformMetrics = useMemo<PlatformMetrics[]>(() => {
+    if (!gsMetrics || !gsIncluded) return platformMetrics
+    const existing = platformMetrics.find((m) => m.platform === "Google Search")
+    if (existing) return platformMetrics
+    return [...platformMetrics, gsMetrics].sort((a, b) => b.impressions - a.impressions)
+  }, [platformMetrics, gsMetrics, gsIncluded])
+
   const mkChart = (key: keyof PlatformMetrics): ChartPoint[] =>
-    platformMetrics.map((m) => ({ platform: m.platform, value: m[key] as number, color: m.color }))
+    allPlatformMetrics.map((m) => ({ platform: m.platform, value: m[key] as number, color: m.color }))
+
+  // ── Leads cruzados: consolidado + GA4 Leads por source ────────────────────
+  const leadsChartData = useMemo((): ChartPoint[] => {
+    const normalizeSource = (src: string): string => {
+      const s = src.toLowerCase()
+      if (["ig", "l.instagram.com", "instagram.com", "instagram"].includes(s)) return "Instagram"
+      if (["fb", "l.facebook.com", "m.facebook.com", "facebook.com", "meta", "facebook"].includes(s)) return "Meta"
+      if (["google", "google ads"].includes(s)) return "Google Ads"
+      if (s === "linkedin-traf" || s === "linkedin") return "Linkedin"
+      if (s === "kwai.com" || s === "kwai") return "Kwai"
+      if (s === "ads.tiktok.com" || s === "tiktok") return "TikTok"
+      if (["tagassistant.google.com", "gtm_teste"].includes(s)) return "Testes"
+      if (s === "(direct)") return "Direto"
+      if (s === "organic") return "Google Orgânico"
+      return src
+    }
+
+    const colorMap: Record<string, string> = {
+      "Meta": "#1877F2",
+      "Instagram": "#E1306C",
+      "TikTok": "#010101",
+      "Google Ads": "#4285F4",
+      "Google Search": "#34A853",
+      "Linkedin": "#0A66C2",
+      "Kwai": "#FF6900",
+      "Direto": "#6b7280",
+      "Google Orgânico": "#34A853",
+    }
+
+    // 1) Base: leads do consolidado (pixel data — Meta, TikTok, Google Ads, etc.)
+    const map = new Map<string, { leads: number; color: string }>()
+    allPlatformMetrics.forEach((m) => {
+      if (m.leads > 0) map.set(m.platform, { leads: m.leads, color: m.color })
+    })
+
+    // 2) GA4 Leads — adiciona fontes que não existem no consolidado
+    if (ga4LeadsData?.success && ga4LeadsData?.data?.values && ga4LeadsData.data.values.length > 1) {
+      const headers = ga4LeadsData.data.values[0]
+      const srcIdx = headers.indexOf("Session source")
+      const cntIdx = headers.indexOf("Event count")
+      ga4LeadsData.data.values.slice(1).forEach((row: string[]) => {
+        const src = row[srcIdx] || ""
+        const cnt = parseInt(row[cntIdx] || "0", 10) || 0
+        if (!src || cnt === 0) return
+        const platform = normalizeSource(src)
+        if (platform === "Testes") return
+        // Só adiciona fontes novas — para as que já estão no consolidado, mantém o pixel
+        if (!map.has(platform)) {
+          map.set(platform, { leads: cnt, color: colorMap[platform] || "#94a3b8" })
+        }
+      })
+    }
+
+    return Array.from(map.entries())
+      .map(([platform, { leads, color }]) => ({ platform, value: leads, color }))
+      .filter((d) => d.value > 0)
+      .sort((a, b) => b.value - a.value)
+  }, [allPlatformMetrics, ga4LeadsData])
+
+  const ga4LeadsTotal = useMemo(() => leadsChartData.reduce((s, d) => s + d.value, 0), [leadsChartData])
 
   if (loading) return <Loading message="Carregando visão geral..." />
   if (error) return (
@@ -284,7 +396,7 @@ const VisaoGeral: React.FC = () => {
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <div className="card-overlay rounded-2xl shadow-lg px-5 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img src="/images/Jetour_logo.svg" alt="Jetour" className="h-7 object-contain" />
+          <img src="/images/LOGO_JETOUR.png" alt="Jetour" className="h-7 object-contain" />
           <div>
             <h1 className="text-lg font-bold text-gray-900 leading-tight">Visão Geral</h1>
             <p className="text-xs text-gray-500">Performance consolidada por plataforma</p>
@@ -300,7 +412,7 @@ const VisaoGeral: React.FC = () => {
           { label: "Impressões",    value: fmt(totals.impressions),                  icon: <Eye className="w-4 h-4" /> },
           { label: "Cliques",       value: fmt(totals.clicks),                       icon: <MousePointer className="w-4 h-4" /> },
           { label: "Visualizações",        value: fmt(totals.videoPlays),                   icon: <Play className="w-4 h-4" /> },
-          { label: "Leads",         value: fmt(totals.leads),                        icon: <Users className="w-4 h-4" /> },
+          { label: "Leads",         value: fmt(ga4LeadsTotal), icon: <Users className="w-4 h-4" /> },
           { label: "CPM",           value: fmtCurrency(totals.cpm),                  icon: <TrendingUp className="w-4 h-4" /> },
           { label: "CTR",           value: fmtPct(totals.ctr),                       icon: <BarChart3 className="w-4 h-4" /> },
           { label: "CPL",           value: totals.leads > 0 ? fmtCurrency(totals.cpl) : "—", icon: <Users className="w-4 h-4" /> },
@@ -400,8 +512,13 @@ const VisaoGeral: React.FC = () => {
 
         {/* Leads */}
         <div className="card-overlay rounded-2xl shadow p-4">
-          <p className="text-sm font-bold text-gray-800 mb-1">Leads por Plataforma</p>
-          <HBar data={mkChart("leads")} />
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-sm font-bold text-gray-800">Leads por Plataforma</p>
+            <span className="text-xs text-gray-400">{leadsChartData.length} fontes</span>
+          </div>
+          <div className="overflow-y-auto" style={{ maxHeight: 220 }}>
+            <HBar data={leadsChartData} />
+          </div>
         </div>
 
         {/* Vídeos */}
@@ -420,7 +537,7 @@ const VisaoGeral: React.FC = () => {
         <div className="card-overlay rounded-2xl shadow p-4">
           <p className="text-sm font-bold text-gray-800 mb-1">CPM por Plataforma</p>
           <HBar
-            data={platformMetrics.map((m) => ({
+            data={allPlatformMetrics.map((m) => ({
               platform: m.platform,
               value: m.impressions > 0 ? m.cost / (m.impressions / 1000) : 0,
               color: m.color,
@@ -433,7 +550,7 @@ const VisaoGeral: React.FC = () => {
         <div className="card-overlay rounded-2xl shadow p-4">
           <p className="text-sm font-bold text-gray-800 mb-1">CTR por Plataforma</p>
           <HBar
-            data={platformMetrics.map((m) => ({
+            data={allPlatformMetrics.map((m) => ({
               platform: m.platform,
               value: m.impressions > 0 ? (m.clicks / m.impressions) * 100 : 0,
               color: m.color,
@@ -446,7 +563,7 @@ const VisaoGeral: React.FC = () => {
         <div className="card-overlay rounded-2xl shadow p-4">
           <p className="text-sm font-bold text-gray-800 mb-1">VTR por Plataforma</p>
           <HBar
-            data={platformMetrics.map((m) => ({
+            data={allPlatformMetrics.map((m) => ({
               platform: m.platform,
               value: m.videoPlays > 0 ? (m.videoCompletions / m.videoPlays) * 100 : 0,
               color: m.color,
@@ -457,11 +574,11 @@ const VisaoGeral: React.FC = () => {
 
         {/* CPL */}
         <div className="card-overlay rounded-2xl shadow p-4">
-          <p className="text-sm font-bold text-gray-800 mb-1">CPL por Plataforma</p>
+          <p className="text-sm font-bold text-gray-800 mb-1">CPC por Plataforma</p>
           <HBar
-            data={platformMetrics.map((m) => ({
+            data={allPlatformMetrics.map((m) => ({
               platform: m.platform,
-              value: m.leads > 0 ? m.cost / m.leads : 0,
+              value: m.clicks > 0 ? m.cost / m.clicks : 0,
               color: m.color,
             }))}
             format={(v) => v > 0 ? fmtCurrency(v) : "—"}
@@ -486,11 +603,11 @@ const VisaoGeral: React.FC = () => {
                 <th className="text-right py-2.5 px-3 font-semibold">Leads</th>
                 <th className="text-right py-2.5 px-3 font-semibold">CPM</th>
                 <th className="text-right py-2.5 px-3 font-semibold">CTR</th>
-                <th className="text-right py-2.5 px-3 font-semibold rounded-r-xl">CPL</th>
+                <th className="text-right py-2.5 px-3 font-semibold rounded-r-xl">CPC</th>
               </tr>
             </thead>
             <tbody>
-              {platformMetrics.map((m, i) => (
+              {allPlatformMetrics.map((m, i) => (
                 <tr key={m.platform} className={i % 2 === 0 ? "bg-slate-50/60" : "bg-white/40"}>
                   <td className="py-2.5 px-3 font-medium text-gray-500">{i + 1}</td>
                   <td className="py-2.5 px-3">
@@ -506,11 +623,11 @@ const VisaoGeral: React.FC = () => {
                   <td className="py-2.5 px-3 text-right text-gray-700">{fmt(m.leads)}</td>
                   <td className="py-2.5 px-3 text-right text-gray-700">{fmtCurrency(m.impressions > 0 ? m.cost / (m.impressions / 1000) : 0)}</td>
                   <td className="py-2.5 px-3 text-right text-gray-700">{fmtPct(m.impressions > 0 ? (m.clicks / m.impressions) * 100 : 0)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-700">{m.leads > 0 ? fmtCurrency(m.cost / m.leads) : "—"}</td>
+                  <td className="py-2.5 px-3 text-right text-gray-700">{m.clicks > 0 ? fmtCurrency(m.cost / m.clicks) : "—"}</td>
                 </tr>
               ))}
               {/* Total row */}
-              {platformMetrics.length > 0 && (
+              {allPlatformMetrics.length > 0 && (
                 <tr className="bg-slate-700/10 font-bold border-t border-slate-300">
                   <td className="py-2.5 px-3" />
                   <td className="py-2.5 px-3 text-gray-800">Total</td>
@@ -521,7 +638,7 @@ const VisaoGeral: React.FC = () => {
                   <td className="py-2.5 px-3 text-right text-gray-900">{fmt(totals.leads)}</td>
                   <td className="py-2.5 px-3 text-right text-gray-900">{fmtCurrency(totals.cpm)}</td>
                   <td className="py-2.5 px-3 text-right text-gray-900">{fmtPct(totals.ctr)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-900">{totals.leads > 0 ? fmtCurrency(totals.cpl) : "—"}</td>
+                  <td className="py-2.5 px-3 text-right text-gray-900">{totals.clicks > 0 ? fmtCurrency(totals.cpc) : "—"}</td>
                 </tr>
               )}
             </tbody>

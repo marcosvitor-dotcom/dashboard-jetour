@@ -3,8 +3,9 @@
 import type React from "react"
 import { useState, useEffect, useMemo, useRef } from "react"
 import { ResponsiveLine } from "@nivo/line"
-import { Calendar, Filter, TrendingUp, Play, Info, DollarSign, MousePointer, Eye, BarChart3, Users } from "lucide-react"
+import { Calendar, Filter, TrendingUp, Play, Info, DollarSign, MousePointer, Eye, BarChart3, Users, Search } from "lucide-react"
 import { useData } from "../../contexts/DataContext"
+import { useGoogleSearchData } from "../../services/consolidadoApi"
 import Loading from "../../components/Loading/Loading"
 import PDFDownloadButton from "../../components/PDFDownloadButton/PDFDownloadButton"
 import AnaliseSemanal from "./components/AnaliseSemanal"
@@ -31,7 +32,7 @@ interface DataPoint {
 
 interface ChartData {
   id: string
-  data: Array<{ x: string; y: number }>
+  data: Array<{ x: string; y: number | null }>
 }
 
 interface VehicleEntry {
@@ -67,6 +68,9 @@ const PlatformIcon: React.FC<{ platform: string; className?: string }> = ({ plat
   if (p.includes("kwai")) {
     return <img className={className} src="https://www.svgrepo.com/show/517319/kwai.svg" alt="Kwai" />
   }
+  if (p === "google search") {
+    return <Search className={className} />
+  }
   if (p.includes("google") || p.includes("youtube") || p.includes("gdn") || p.includes("demand")) {
     return (
       <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -85,6 +89,7 @@ const platformColor = (platform: string): string => {
   if (p.includes("tiktok")) return "bg-slate-800 text-white"
   if (p.includes("linkedin")) return "bg-sky-100 text-sky-700"
   if (p.includes("kwai")) return "bg-orange-100 text-orange-700"
+  if (p === "google search") return "bg-green-100 text-green-700"
   if (p.includes("google") || p.includes("gdn") || p.includes("demand")) return "bg-red-100 text-red-700"
   if (p.includes("youtube")) return "bg-red-100 text-red-700"
   return "bg-gray-100 text-gray-700"
@@ -95,6 +100,7 @@ const platformColor = (platform: string): string => {
 const LinhaTempo: React.FC = () => {
   const contentRef = useRef<HTMLDivElement>(null)
   const { data, campaigns, loading, error } = useData()
+  const { data: gsApiData } = useGoogleSearchData()
   const [processedData, setProcessedData] = useState<DataPoint[]>([])
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: "", end: "" })
   const [selectedVehicles, setSelectedVehicles] = useState<string[]>([])
@@ -116,6 +122,7 @@ const LinhaTempo: React.FC = () => {
     Spotify: "#1DB954",
     Band: "#ffd700",
     "Brasil 247": "#ff4500",
+    "Google Search": "#34a853",
     GDN: "#4285f4",
     "Demand-Gen": "#34a853",
     "Portal Forum": "#8b4513",
@@ -226,6 +233,67 @@ const LinhaTempo: React.FC = () => {
     }
   }, [data])
 
+  // ── Injetar Google Search em processedData ────────────────────────────────
+  useEffect(() => {
+    if (!gsApiData?.success || !gsApiData?.data?.values || gsApiData.data.values.length < 2) return
+
+    const headers = gsApiData.data.values[0]
+    const rows = gsApiData.data.values.slice(1)
+
+    const dayIdx     = headers.indexOf("Day")
+    const clicksIdx  = headers.indexOf("Clicks")
+    const impIdx     = headers.indexOf("Impressions")
+    const costIdx    = headers.indexOf("Cost (Spend)")
+    const campIdx    = headers.indexOf("Campaign Name")
+
+    const parseN = (v: string) => parseFloat((v || "").replace(/[R$\s.]/g, "").replace(",", ".")) || 0
+    const parseI = (v: string) => parseInt((v || "").replace(/[.\s]/g, "").replace(",", "")) || 0
+    const parseDate = (s: string) => {
+      if (!s) return ""
+      const p = s.split("/")
+      if (p.length === 3) return `${p[2]}-${p[1].padStart(2, "0")}-${p[0].padStart(2, "0")}`
+      return s
+    }
+
+    const gsRows: DataPoint[] = rows
+      .filter((row: string[]) => row[dayIdx])
+      .map((row: string[]): DataPoint => ({
+        date: parseDate(row[dayIdx]),
+        campaignName: row[campIdx] || "",
+        creativeTitle: "",
+        platform: "Google Search",
+        reach: 0,
+        impressions: parseI(row[impIdx] || "0"),
+        clicks: parseI(row[clicksIdx] || "0"),
+        totalSpent: parseN(row[costIdx] || "0"),
+        videoViews: 0,
+        videoViews25: 0,
+        videoViews50: 0,
+        videoViews75: 0,
+        videoCompletions: 0,
+        totalEngagements: 0,
+        leads: 0,
+        veiculo: "Google Search",
+        tipoCompra: "",
+      }))
+      .filter((r) => r.date && (r.impressions > 0 || r.clicks > 0 || r.totalSpent > 0))
+
+    if (gsRows.length === 0) return
+
+    setProcessedData((prev) => {
+      const withoutGs = prev.filter((r) => r.platform !== "Google Search")
+      const merged = [...withoutGs, ...gsRows].sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      )
+      return merged
+    })
+
+    setAvailableVehicles((prev) => {
+      if (prev.includes("Google Search")) return prev
+      return [...prev, "Google Search"].sort()
+    })
+  }, [gsApiData])
+
   useEffect(() => {
     if (processedData.length > 0) {
       let filtered = processedData
@@ -278,6 +346,13 @@ const LinhaTempo: React.FC = () => {
       }]
     }
 
+    // Collect all unique dates across all selected vehicles so every series shares the same X axis
+    const allDatesSet = new Set<string>()
+    filteredData.forEach((i) => {
+      if (selectedVehicles.includes(i.platform)) allDatesSet.add(i.date)
+    })
+    const allDates = Array.from(allDatesSet).sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+
     return selectedVehicles.map((vehicle) => {
       const byDate: Record<string, DataPoint[]> = {}
       filteredData.filter((i) => i.platform === vehicle).forEach((i) => {
@@ -286,9 +361,10 @@ const LinhaTempo: React.FC = () => {
       })
       return {
         id: vehicle,
-        data: Object.entries(byDate)
-          .map(([date, d]) => ({ x: date, y: calc(d, selectedMetric) }))
-          .sort((a, b) => new Date(a.x).getTime() - new Date(b.x).getTime()),
+        data: allDates.map((date) => ({
+          x: date,
+          y: byDate[date] ? calc(byDate[date], selectedMetric) : null,
+        })),
       }
     }).sort((a, b) => a.id.localeCompare(b.id))
   }, [filteredData, selectedVehicles, selectedMetric])
@@ -387,7 +463,7 @@ const LinhaTempo: React.FC = () => {
         <div className="absolute inset-0 bg-black/40" />
         <div className="absolute bottom-0 left-0 right-0 p-3">
           <div className="bg-white/95 backdrop-blur-sm rounded-xl px-4 py-3 shadow-lg flex items-center gap-4 max-w-2xl">
-            <img src="/images/Jetour_logo.svg" alt="Jetour" className="h-7 object-contain" />
+            <img src="/images/LOGO_JETOUR.png" alt="Jetour" className="h-7 object-contain" />
             <div>
               <h1 className="text-xl font-bold text-gray-900 leading-tight">Linha do Tempo</h1>
               <p className="text-xs text-gray-500">Evolução de métricas por período</p>
@@ -578,12 +654,13 @@ const LinhaTempo: React.FC = () => {
                   ? (serie) => platformColors[serie.id] || platformColors.Default
                   : ["#334155"]
                 }
-                lineWidth={2}
+                lineWidth={selectedVehicles.length > 1 ? 2 : 2}
+                enablePoints={selectedVehicles.length <= 1}
                 pointSize={5}
                 pointColor={{ theme: "background" }}
                 pointBorderWidth={2}
-                pointBorderColor={{ from: "serieColor" }}
-                enableArea
+                pointBorderColor={{ from: "seriesColor" }}
+                enableArea={selectedVehicles.length <= 1}
                 areaOpacity={0.08}
                 useMesh
                 enableSlices="x"

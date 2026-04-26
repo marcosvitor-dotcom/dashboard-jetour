@@ -15,6 +15,7 @@ import {
   ArrowDown,
   Minus,
   Users,
+  Search,
 } from "lucide-react"
 import PDFDownloadButton from "../../../components/PDFDownloadButton/PDFDownloadButton"
 
@@ -105,6 +106,9 @@ const PlatformIcon: React.FC<{ platform: string; className?: string }> = ({ plat
   if (p.includes("kwai")) {
     return <img className={className} src="https://www.svgrepo.com/show/517319/kwai.svg" alt="Kwai" />
   }
+  if (p === "google search") {
+    return <Search className={className} />
+  }
   if (p.includes("google") || p.includes("youtube") || p.includes("gdn") || p.includes("demand")) {
     return (
       <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -123,6 +127,7 @@ const platformColor = (platform: string): string => {
   if (p.includes("tiktok")) return "bg-slate-800 text-white"
   if (p.includes("linkedin")) return "bg-sky-100 text-sky-700"
   if (p.includes("kwai")) return "bg-orange-100 text-orange-700"
+  if (p === "google search") return "bg-green-100 text-green-700"
   if (p.includes("google") || p.includes("gdn") || p.includes("demand")) return "bg-red-100 text-red-700"
   if (p.includes("youtube")) return "bg-red-100 text-red-700"
   return "bg-gray-100 text-gray-700"
@@ -393,7 +398,7 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="card-overlay rounded-2xl shadow-lg px-5 py-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <img src="/images/Jetour_logo.svg" alt="Jetour" className="h-7 object-contain" />
+          <img src="/images/LOGO_JETOUR.png" alt="Jetour" className="h-7 object-contain" />
           <div>
             <h1 className="text-lg font-bold text-gray-900 leading-tight">Análise de Período</h1>
             <p className="text-xs text-gray-500">Comparativo entre períodos</p>

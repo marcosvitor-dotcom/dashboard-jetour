@@ -284,7 +284,7 @@ const Glossario: React.FC = () => {
         <div className="absolute inset-0 bg-black/40" />
         <div className="absolute bottom-0 left-0 right-0 p-4">
           <div className="bg-white/95 backdrop-blur-sm rounded-xl p-4 shadow-lg max-w-2xl flex items-center gap-4">
-            <img src="/images/Jetour_logo.svg" alt="Jetour" className="h-8 object-contain" />
+            <img src="/images/LOGO_JETOUR.png" alt="Jetour" className="h-8 object-contain" />
             <div>
               <h1 className="text-2xl font-bold text-gray-900 leading-tight">Glossário</h1>
               <p className="text-sm text-gray-600">Definições dos termos e métricas do dashboard</p>

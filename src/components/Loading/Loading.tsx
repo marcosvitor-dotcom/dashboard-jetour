@@ -12,7 +12,7 @@ const Loading: React.FC<LoadingProps> = ({ message = "Carregando...", className 
       <div style={{ position: "relative", width: 180, height: 60, overflow: "hidden" }}>
         {/* Logo base */}
         <img
-          src="/images/Jetour_logo.svg"
+          src="/images/LOGO_JETOUR.png"
           alt="Jetour"
           style={{ width: 180, height: 60, objectFit: "contain", display: "block", opacity: 0.3 }}
           draggable={false}
@@ -30,7 +30,7 @@ const Loading: React.FC<LoadingProps> = ({ message = "Carregando...", className 
         }} />
         {/* Logo em cima da faixa, com mix-blend-mode para revelar só onde a logo existe */}
         <img
-          src="/images/Jetour_logo.svg"
+          src="/images/LOGO_JETOUR.png"
           alt=""
           aria-hidden
           style={{

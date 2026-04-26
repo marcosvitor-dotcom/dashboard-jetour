@@ -136,7 +136,7 @@ const CriativosLinkedIn: React.FC = () => {
       {/* Header */}
       <div className="card-overlay rounded-2xl shadow-lg px-5 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img src="/images/Jetour_logo.svg" alt="Jetour" className="h-7 object-contain" />
+          <img src="/images/LOGO_JETOUR.png" alt="Jetour" className="h-7 object-contain" />
           <div>
             <h1 className="text-lg font-bold text-gray-900 leading-tight">Criativos — LinkedIn</h1>
             <p className="text-xs text-gray-500">Performance por criativo no LinkedIn Ads</p>
