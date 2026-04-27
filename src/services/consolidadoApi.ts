@@ -63,7 +63,21 @@ export const fetchTikTokCreatives = async (): Promise<ConsolidadoData> => {
 
 export const fetchGoogleSearchCreatives = async (): Promise<ConsolidadoData> => {
   const response = await consolidadoApi.get(
-    `/google/sheets/${SHEET_ID}/data?sheet=Google%20-%20Search`
+    `/google/sheets/${SHEET_ID}/data?sheet=Google%20-%20Search&range=A1%3AAZ20000`
+  )
+  return response.data
+}
+
+export const fetchGoogleSearch2 = async (): Promise<ConsolidadoData> => {
+  const response = await consolidadoApi.get(
+    `/google/sheets/${SHEET_ID}/data?sheet=Google%20-%20Search%202&range=A1%3AAZ20000`
+  )
+  return response.data
+}
+
+export const fetchGoogleSearchKeyword = async (): Promise<ConsolidadoData> => {
+  const response = await consolidadoApi.get(
+    `/google/sheets/${SHEET_ID}/data?sheet=Google%20-%20Search%20Search%20Keyword&range=A1%3AAZ20000`
   )
   return response.data
 }
@@ -83,6 +97,32 @@ export const useGoogleSearchData = () => {
 
   React.useEffect(() => { loadData() }, [loadData])
   return { data, loading, error, refetch: loadData }
+}
+
+export const useGoogleSearchAllData = () => {
+  const [search, setSearch] = useState<ConsolidadoData | null>(null)
+  const [search2, setSearch2] = useState<ConsolidadoData | null>(null)
+  const [searchKeyword, setSearchKeyword] = useState<ConsolidadoData | null>(null)
+  const [loading, setLoading] = useState<boolean>(true)
+  const [error, setError] = useState<Error | null>(null)
+
+  const loadData = React.useCallback(async () => {
+    try {
+      setLoading(true)
+      const [s, s2, sk] = await Promise.all([
+        fetchGoogleSearchCreatives(),
+        fetchGoogleSearch2(),
+        fetchGoogleSearchKeyword(),
+      ])
+      setSearch(s)
+      setSearch2(s2)
+      setSearchKeyword(sk)
+      setError(null)
+    } catch (err) { setError(err as Error) } finally { setLoading(false) }
+  }, [])
+
+  React.useEffect(() => { loadData() }, [loadData])
+  return { search, search2, searchKeyword, loading, error, refetch: loadData }
 }
 
 export const fetchGooglePMaxCreatives = async (): Promise<ConsolidadoData> => {

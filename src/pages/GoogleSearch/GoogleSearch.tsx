@@ -1,12 +1,35 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useMemo } from "react"
-import { Calendar, Filter, ArrowUpDown, DollarSign, Eye, MousePointer, TrendingUp, Target } from "lucide-react"
-import { useGoogleSearchData } from "../../services/consolidadoApi"
+import { useState, useMemo } from "react"
+import { Calendar, Filter, ArrowUpDown, DollarSign, Eye, MousePointer, TrendingUp, Target, Search } from "lucide-react"
+import { useGoogleSearchAllData } from "../../services/consolidadoApi"
 import Loading from "../../components/Loading/Loading"
 
-interface SearchRow {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface KeywordRow {
+  keyword: string
+  matchType: string
+  campaignName: string
+  adGroupName: string
+  clicks: number
+  impressions: number
+  ctr: number
+  avgCpc: number
+  cost: number
+  conversions: number
+  convRate: number
+  // enriquecido de Search Keyword (lifetime)
+  lifetimeClicks: number
+  lifetimeImpressions: number
+  lifetimeCost: number
+  lifetimeConversions: number
+  campaignStart: string
+  campaignEnd: string
+}
+
+interface DailyRow {
   day: string
   keyword: string
   matchType: string
@@ -21,6 +44,26 @@ interface SearchRow {
   convRate: number
 }
 
+interface TermRow {
+  day: string
+  searchTerm: string
+  matchType: string
+  addedExcluded: string
+  clicks: number
+  impressions: number
+  ctr: number
+  avgCpc: number
+  cost: number
+  conversions: number
+  convRate: number
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const parseN  = (v: string | undefined) => parseFloat((v || "").replace(/[R$\s.]/g, "").replace(",", ".")) || 0
+const parseI  = (v: string | undefined) => parseInt((v || "").replace(/[.\s]/g, "").replace(",", "")) || 0
+const parsePct = (v: string | undefined) => parseFloat((v || "").replace("%", "").replace(",", ".")) || 0
+
 const fmt = (v: number) => {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(".", ",")} mi`
   if (v >= 1_000) return `${(v / 1_000).toFixed(0)} mil`
@@ -29,15 +72,6 @@ const fmt = (v: number) => {
 const fmtCurrency = (v: number) =>
   `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtPct = (v: number) => `${v.toFixed(2)}%`
-const isoDate = (s: string) => {
-  if (!s) return ""
-  const p = s.split("/")
-  if (p.length === 3) return `${p[2]}-${p[1].padStart(2, "0")}-${p[0].padStart(2, "0")}`
-  return s
-}
-const parseN = (v: string) => parseFloat((v || "").replace(/[R$\s.]/g, "").replace(",", ".")) || 0
-const parseI = (v: string) => parseInt((v || "").replace(/[.\s]/g, "").replace(",", "")) || 0
-const parsePct = (v: string) => parseFloat((v || "").replace("%", "").replace(",", ".")) || 0
 
 // ─── Word Cloud ───────────────────────────────────────────────────────────────
 
@@ -45,224 +79,288 @@ const CLOUD_COLORS = ["#2563eb","#16a34a","#d97706","#dc2626","#7c3aed","#0891b2
 
 interface WordItem { text: string; value: number }
 
-const getWordSize = (value: number, maxVal: number, minVal: number): number => {
-  const range = maxVal - minVal
-  if (range === 0) return 18
-  const normalized = (value - minVal) / range
-  return 12 + normalized * 36 // 12px → 48px
-}
-
 const WordCloud: React.FC<{ words: WordItem[] }> = ({ words }) => {
   if (!words.length) return <div className="text-gray-400 text-sm text-center py-8">Sem dados para nuvem de palavras</div>
-
   const maxVal = words[0].value
   const minVal = words[words.length - 1].value
-
-  // Gera posições espirais ao redor do centro para simular nuvem real
-  // Cada palavra recebe um ângulo e raio crescente
-  const W = 420 // largura lógica do container
-  const H = 300 // altura lógica do container
-  const cx = W / 2
-  const cy = H / 2
+  const W = 420; const H = 280
+  const cx = W / 2; const cy = H / 2
 
   const positioned = words.map((w, i) => {
-    const fontSize = getWordSize(w.value, maxVal, minVal)
+    const range = maxVal - minVal
+    const fontSize = range === 0 ? 18 : 12 + ((w.value - minVal) / range) * 34
     const golden = 2.399963
-    // Raio maior = mais espaço entre palavras; palavras grandes ocupam mais espaço
-    const radius = i === 0 ? 0 : 30 + i * 13 + fontSize * 0.8
+    const radius = i === 0 ? 0 : 28 + i * 12 + fontSize * 0.7
     const angle = i * golden
-    const rawX = cx + Math.cos(angle) * radius
-    const rawY = cy + Math.sin(angle) * radius * 0.52
     const margin = fontSize * 1.8
-    const x = Math.max(margin, Math.min(W - margin, rawX))
-    const y = Math.max(fontSize, Math.min(H - fontSize, rawY))
+    const x = Math.max(margin, Math.min(W - margin, cx + Math.cos(angle) * radius))
+    const y = Math.max(fontSize, Math.min(H - fontSize, cy + Math.sin(angle) * radius * 0.52))
     return { ...w, fontSize, x, y }
   })
 
   return (
-    <div
-      className="border border-gray-100 rounded-xl overflow-hidden"
-      style={{ position: "relative", width: "100%", paddingBottom: `${(H / W) * 100}%` }}
-    >
+    <div className="border border-gray-100 rounded-xl overflow-hidden"
+      style={{ position: "relative", width: "100%", paddingBottom: `${(H / W) * 100}%` }}>
       <div style={{ position: "absolute", inset: 0 }}>
         <svg width="100%" height="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
-          {positioned.map((w, i) => {
-            const opacity = 0.55 + (w.value / maxVal) * 0.45
-            return (
-              <text
-                key={`${w.text}-${i}`}
-                x={w.x}
-                y={w.y}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                fill={CLOUD_COLORS[i % CLOUD_COLORS.length]}
-                fontSize={w.fontSize}
-                fontWeight={w.fontSize > 26 ? 700 : w.fontSize > 18 ? 600 : 400}
-                opacity={opacity}
-                style={{ cursor: "default", userSelect: "none" }}
-              >
-                <title>{`${w.text}: ${w.value.toLocaleString("pt-BR")} impressões`}</title>
-                {w.text}
-              </text>
-            )
-          })}
+          {positioned.map((w, i) => (
+            <text key={`${w.text}-${i}`} x={w.x} y={w.y} textAnchor="middle" dominantBaseline="middle"
+              fill={CLOUD_COLORS[i % CLOUD_COLORS.length]}
+              fontSize={w.fontSize} fontWeight={w.fontSize > 26 ? 700 : w.fontSize > 18 ? 600 : 400}
+              opacity={0.55 + (w.value / maxVal) * 0.45}
+              style={{ cursor: "default", userSelect: "none" }}>
+              <title>{`${w.text}: ${w.value.toLocaleString("pt-BR")} impressões`}</title>
+              {w.text}
+            </text>
+          ))}
         </svg>
       </div>
     </div>
   )
 }
 
+// ─── SortArrow ────────────────────────────────────────────────────────────────
+
+const SortArrow = ({ field, sortField, sortOrder }: { field: string; sortField: string; sortOrder: "asc" | "desc" }) =>
+  sortField === field
+    ? <span className="ml-0.5">{sortOrder === "desc" ? "↓" : "↑"}</span>
+    : <span className="ml-0.5 opacity-30">↕</span>
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 const GoogleSearch: React.FC = () => {
-  const { data: apiData, loading, error, refetch } = useGoogleSearchData()
-  const [processedData, setProcessedData] = useState<SearchRow[]>([])
-  const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: "", end: "" })
+  const { search, search2, searchKeyword, loading, error } = useGoogleSearchAllData()
+
+  const [dateRange, setDateRange]           = useState<{ start: string; end: string }>({ start: "", end: "" })
   const [selectedCampaign, setSelectedCampaign] = useState("")
   const [selectedMatchType, setSelectedMatchType] = useState("")
-  const [availableCampaigns, setAvailableCampaigns] = useState<string[]>([])
-  const [availableMatchTypes, setAvailableMatchTypes] = useState<string[]>([])
-  const [currentPage, setCurrentPage] = useState(1)
-  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc")
-  const [sortField, setSortField] = useState<keyof SearchRow>("cost")
-  const itemsPerPage = 15
+  const [activeTab, setActiveTab]           = useState<"keywords" | "terms">("keywords")
+  const [kwPage, setKwPage]                 = useState(1)
+  const [termPage, setTermPage]             = useState(1)
+  const [kwSort, setKwSort]                 = useState<{ field: keyof KeywordRow; order: "desc" | "asc" }>({ field: "cost", order: "desc" })
+  const [termSort, setTermSort]             = useState<{ field: keyof TermRow; order: "desc" | "asc" }>({ field: "clicks", order: "desc" })
+  const PAGE = 15
 
-  useEffect(() => {
-    if (!apiData?.success || !apiData?.data?.values || apiData.data.values.length < 2) return
-    const headers = apiData.data.values[0]
-    const rows = apiData.data.values.slice(1)
-    const cSet = new Set<string>(), mSet = new Set<string>()
+  // ── Parse Google - Search (por dia) ────────────────────────────────────────
+  const dailyRows = useMemo<DailyRow[]>(() => {
+    if (!search?.data?.values || search.data.values.length < 2) return []
+    const [headers, ...rows] = search.data.values
+    const idx = (c: string) => headers.indexOf(c)
+    return rows
+      .filter((r: string[]) => r[idx("Search keyword")])
+      .map((r: string[]): DailyRow => ({
+        day:          r[idx("Day")] || "",
+        keyword:      r[idx("Search keyword")] || "",
+        matchType:    r[idx("Search keyword match type")] || "",
+        campaignName: r[idx("Campaign Name")] || "",
+        adGroupName:  r[idx("Ad Group Name")] || "",
+        clicks:       parseI(r[idx("Clicks")]),
+        impressions:  parseI(r[idx("Impressions")]),
+        ctr:          parsePct(r[idx("CTR")]),
+        avgCpc:       parseN(r[idx("Avg. CPC")]),
+        cost:         parseN(r[idx("Cost (Spend)")]),
+        conversions:  parseN(r[idx("Conversions")]),
+        convRate:     parsePct(r[idx("Conv. rate")]),
+      }))
+  }, [search])
 
-    const processed: SearchRow[] = rows
-      .filter((row) => row[headers.indexOf("Search keyword")])
-      .map((row): SearchRow => {
-        const campaignName = row[headers.indexOf("Campaign Name")] || ""
-        const matchType = row[headers.indexOf("Search keyword match type")] || ""
-        if (campaignName) cSet.add(campaignName)
-        if (matchType) mSet.add(matchType)
-        return {
-          day: row[headers.indexOf("Day")] || "",
-          keyword: row[headers.indexOf("Search keyword")] || "",
-          matchType,
-          campaignName,
-          adGroupName: row[headers.indexOf("Ad Group Name")] || "",
-          clicks: parseI(row[headers.indexOf("Clicks")]),
-          impressions: parseI(row[headers.indexOf("Impressions")]),
-          ctr: parsePct(row[headers.indexOf("CTR")]),
-          avgCpc: parseN(row[headers.indexOf("Avg. CPC")]),
-          cost: parseN(row[headers.indexOf("Cost (Spend)")]),
-          conversions: parseN(row[headers.indexOf("Conversions")]),
-          convRate: parsePct(row[headers.indexOf("Conv. rate")]),
-        }
+  // ── Parse Google - Search Search Keyword (lifetime acumulado) ──────────────
+  const lifetimeMap = useMemo<Map<string, Partial<KeywordRow>>>(() => {
+    const map = new Map<string, Partial<KeywordRow>>()
+    if (!searchKeyword?.data?.values || searchKeyword.data.values.length < 2) return map
+    const [headers, ...rows] = searchKeyword.data.values
+    const idx = (c: string) => headers.indexOf(c)
+    rows.forEach((r: string[]) => {
+      const kw = (r[idx("Display Search keyword")] || "").toLowerCase().trim()
+      if (!kw) return
+      const existing = map.get(kw) ?? { lifetimeClicks: 0, lifetimeImpressions: 0, lifetimeCost: 0, lifetimeConversions: 0 }
+      map.set(kw, {
+        lifetimeClicks:       (existing.lifetimeClicks      ?? 0) + parseI(r[idx("Clicks")]),
+        lifetimeImpressions:  (existing.lifetimeImpressions ?? 0) + parseI(r[idx("Impressions")]),
+        lifetimeCost:         (existing.lifetimeCost        ?? 0) + parseN(r[idx("Cost (Spend)")]),
+        lifetimeConversions:  (existing.lifetimeConversions ?? 0) + parseN(r[idx("Conversions")]),
+        campaignStart:        r[idx("Campaign Start Date")] || "",
+        campaignEnd:          r[idx("Campaign End Date")] || "",
       })
+    })
+    return map
+  }, [searchKeyword])
 
-    setProcessedData(processed)
-    setAvailableCampaigns(Array.from(cSet).sort())
-    setAvailableMatchTypes(Array.from(mSet).sort())
-    if (processed.length > 0) {
-      const dates = processed.map((r) => isoDate(r.day)).filter(Boolean).sort()
-      setDateRange({ start: dates[0], end: dates[dates.length - 1] })
-    }
-  }, [apiData])
+  // ── Parse Google - Search 2 (termos reais) ─────────────────────────────────
+  const allTerms = useMemo<TermRow[]>(() => {
+    if (!search2?.data?.values || search2.data.values.length < 2) return []
+    const [headers, ...rows] = search2.data.values
+    const idx = (c: string) => headers.indexOf(c)
+    return rows
+      .filter((r: string[]) => r[idx("Search term")])
+      .map((r: string[]): TermRow => ({
+        day:           r[idx("Day")] || "",
+        searchTerm:    r[idx("Search term")] || "",
+        matchType:     r[idx("Match type")] || "",
+        addedExcluded: r[idx("Added/Excluded")] || "",
+        clicks:        parseI(r[idx("Clicks")]),
+        impressions:   parseI(r[idx("Impressions")]),
+        ctr:           parsePct(r[idx("CTR")]),
+        avgCpc:        parseN(r[idx("Avg. CPC")]),
+        cost:          parseN(r[idx("Cost (Spend)")]),
+        conversions:   parseN(r[idx("Conversions")]),
+        convRate:      parsePct(r[idx("Conv. rate")]),
+      }))
+  }, [search2])
 
-  const filtered = useMemo(() => processedData.filter((r) => {
-    const iso = isoDate(r.day)
-    if (dateRange.start && iso < dateRange.start) return false
-    if (dateRange.end && iso > dateRange.end) return false
-    if (selectedCampaign && r.campaignName !== selectedCampaign) return false
-    if (selectedMatchType && r.matchType !== selectedMatchType) return false
+  // ── Date range auto (de dailyRows) ─────────────────────────────────────────
+  const { minDate, maxDate } = useMemo(() => {
+    const dates = dailyRows.map((r) => r.day).filter(Boolean).sort()
+    return { minDate: dates[0] ?? "", maxDate: dates[dates.length - 1] ?? "" }
+  }, [dailyRows])
+  const start = dateRange.start || minDate
+  const end   = dateRange.end   || maxDate
+
+  // ── Filtros disponíveis ────────────────────────────────────────────────────
+  const { campaigns, matchTypes } = useMemo(() => {
+    const cSet = new Set<string>()
+    const mSet = new Set<string>()
+    dailyRows.forEach((r) => { if (r.campaignName) cSet.add(r.campaignName); if (r.matchType) mSet.add(r.matchType) })
+    return { campaigns: Array.from(cSet).sort(), matchTypes: Array.from(mSet).sort() }
+  }, [dailyRows])
+
+  // ── dailyRows filtrados ────────────────────────────────────────────────────
+  const filteredDaily = useMemo(() => dailyRows.filter((r) => {
+    if (start && r.day < start) return false
+    if (end   && r.day > end)   return false
+    if (selectedCampaign  && r.campaignName !== selectedCampaign)  return false
+    if (selectedMatchType && r.matchType    !== selectedMatchType) return false
     return true
-  }), [processedData, dateRange, selectedCampaign, selectedMatchType])
+  }), [dailyRows, start, end, selectedCampaign, selectedMatchType])
 
-  // Aggregate by keyword + campaign + matchType
-  const grouped = useMemo(() => {
-    const map = new Map<string, SearchRow>()
-    filtered.forEach((r) => {
-      const key = `${r.keyword}||${r.campaignName}||${r.matchType}`
-      if (!map.has(key)) { map.set(key, { ...r }) } else {
-        const g = map.get(key)!
-        g.clicks += r.clicks
-        g.impressions += r.impressions
-        g.cost += r.cost
-        g.conversions += r.conversions
+  // ── allTerms filtrados por data ────────────────────────────────────────────
+  const filteredTerms = useMemo(() => allTerms.filter((r) => {
+    if (start && r.day < start) return false
+    if (end   && r.day > end)   return false
+    return true
+  }), [allTerms, start, end])
+
+  // ── Agrupa por keyword e enriquece com lifetime ────────────────────────────
+  const groupedKeywords = useMemo<KeywordRow[]>(() => {
+    const map = new Map<string, KeywordRow>()
+    filteredDaily.forEach((r) => {
+      const key = `${r.keyword.toLowerCase()}||${r.campaignName}||${r.matchType}`
+      if (!map.has(key)) {
+        const lifetime = lifetimeMap.get(r.keyword.toLowerCase()) ?? {}
+        map.set(key, {
+          keyword: r.keyword, matchType: r.matchType, campaignName: r.campaignName,
+          adGroupName: r.adGroupName,
+          clicks: 0, impressions: 0, ctr: 0, avgCpc: 0, cost: 0, conversions: 0, convRate: 0,
+          lifetimeClicks:      lifetime.lifetimeClicks      ?? 0,
+          lifetimeImpressions: lifetime.lifetimeImpressions ?? 0,
+          lifetimeCost:        lifetime.lifetimeCost        ?? 0,
+          lifetimeConversions: lifetime.lifetimeConversions ?? 0,
+          campaignStart:       lifetime.campaignStart       ?? "",
+          campaignEnd:         lifetime.campaignEnd         ?? "",
+        })
       }
+      const g = map.get(key)!
+      g.clicks      += r.clicks
+      g.impressions += r.impressions
+      g.cost        += r.cost
+      g.conversions += r.conversions
     })
-    // Recalculate derived
-    const arr = Array.from(map.values()).map((r) => ({
+    return Array.from(map.values()).map((r) => ({
       ...r,
-      ctr: r.impressions > 0 ? (r.clicks / r.impressions) * 100 : 0,
-      avgCpc: r.clicks > 0 ? r.cost / r.clicks : 0,
-      convRate: r.clicks > 0 ? (r.conversions / r.clicks) * 100 : 0,
-    }))
-    return arr.sort((a, b) => {
-      const va = a[sortField] as number
-      const vb = b[sortField] as number
-      return sortOrder === "desc" ? vb - va : va - vb
+      ctr:     r.impressions > 0 ? (r.clicks / r.impressions) * 100 : 0,
+      avgCpc:  r.clicks > 0      ? r.cost / r.clicks : 0,
+      convRate: r.clicks > 0     ? (r.conversions / r.clicks) * 100 : 0,
+    })).sort((a, b) => {
+      const va = a[kwSort.field] as number; const vb = b[kwSort.field] as number
+      return kwSort.order === "desc" ? vb - va : va - vb
     })
-  }, [filtered, sortOrder, sortField])
+  }, [filteredDaily, lifetimeMap, kwSort])
 
+  // ── Agrupa por search term ─────────────────────────────────────────────────
+  const groupedTerms = useMemo<TermRow[]>(() => {
+    const map = new Map<string, TermRow>()
+    filteredTerms.forEach((r) => {
+      const key = `${r.searchTerm.toLowerCase()}||${r.matchType}||${r.addedExcluded}`
+      if (!map.has(key)) { map.set(key, { ...r, clicks: 0, impressions: 0, cost: 0, conversions: 0, ctr: 0, avgCpc: 0, convRate: 0 }) }
+      const g = map.get(key)!
+      g.clicks      += r.clicks
+      g.impressions += r.impressions
+      g.cost        += r.cost
+      g.conversions += r.conversions
+    })
+    return Array.from(map.values()).map((r) => ({
+      ...r,
+      ctr:     r.impressions > 0 ? (r.clicks / r.impressions) * 100 : 0,
+      avgCpc:  r.clicks > 0      ? r.cost / r.clicks : 0,
+      convRate: r.clicks > 0     ? (r.conversions / r.clicks) * 100 : 0,
+    })).sort((a, b) => {
+      const va = a[termSort.field] as number; const vb = b[termSort.field] as number
+      return termSort.order === "desc" ? vb - va : va - vb
+    })
+  }, [filteredTerms, termSort])
+
+  // ── Totais (Search + Search 2 combinados) ─────────────────────────────────
   const totals = useMemo(() => {
-    const cost = grouped.reduce((s, r) => s + r.cost, 0)
-    const clicks = grouped.reduce((s, r) => s + r.clicks, 0)
-    const impressions = grouped.reduce((s, r) => s + r.impressions, 0)
-    const conversions = grouped.reduce((s, r) => s + r.conversions, 0)
+    const clicks      = groupedKeywords.reduce((s, r) => s + r.clicks, 0)
+    const impressions = groupedKeywords.reduce((s, r) => s + r.impressions, 0)
+    const cost        = groupedKeywords.reduce((s, r) => s + r.cost, 0)
+    const conversions = groupedKeywords.reduce((s, r) => s + r.conversions, 0)
+    // termos reais (Search 2) — sem duplic com keywords
+    const termClicks      = groupedTerms.reduce((s, r) => s + r.clicks, 0)
+    const termImpressions = groupedTerms.reduce((s, r) => s + r.impressions, 0)
     return {
       cost, clicks, impressions, conversions,
-      ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
-      cpc: clicks > 0 ? cost / clicks : 0,
-      cpm: impressions > 0 ? cost / (impressions / 1000) : 0,
-      convRate: clicks > 0 ? (conversions / clicks) * 100 : 0,
+      termClicks, termImpressions,
+      ctr:      impressions > 0 ? (clicks / impressions) * 100 : 0,
+      cpc:      clicks > 0      ? cost / clicks : 0,
+      cpm:      impressions > 0 ? cost / (impressions / 1000) : 0,
+      convRate: clicks > 0      ? (conversions / clicks) * 100 : 0,
     }
-  }, [grouped])
+  }, [groupedKeywords, groupedTerms])
 
-  // Word cloud data
-  const cloudWords = useMemo(() => {
+  // ── Nuvem de palavras — termos reais (Search 2) ────────────────────────────
+  const cloudWords = useMemo<WordItem[]>(() => {
     const map = new Map<string, number>()
-    filtered.forEach((r) => {
-      const kw = r.keyword.toLowerCase().trim()
-      if (!kw || kw === "(other)") return
-      // Split into individual words too for variety
-      kw.split(/\s+/).forEach((w) => {
-        if (w.length < 3) return
-        map.set(w, (map.get(w) || 0) + r.impressions)
-      })
-      // Also add full phrase
-      map.set(kw, (map.get(kw) || 0) + r.impressions * 2)
+    filteredTerms.forEach((r) => {
+      const term = r.searchTerm.toLowerCase().trim()
+      if (!term || term === "(other)") return
+      term.split(/\s+/).forEach((w) => { if (w.length >= 3) map.set(w, (map.get(w) ?? 0) + r.impressions) })
+      map.set(term, (map.get(term) ?? 0) + r.impressions * 2)
     })
     return Array.from(map.entries())
       .map(([text, value]) => ({ text, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 60)
-  }, [filtered])
+  }, [filteredTerms])
 
-  const totalPages = Math.ceil(grouped.length / itemsPerPage)
-  const paginated = grouped.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+  // ── Paginação ──────────────────────────────────────────────────────────────
+  const kwTotalPages   = Math.ceil(groupedKeywords.length / PAGE)
+  const termTotalPages = Math.ceil(groupedTerms.length / PAGE)
+  const kwPaginated    = groupedKeywords.slice((kwPage - 1) * PAGE, kwPage * PAGE)
+  const termPaginated  = groupedTerms.slice((termPage - 1) * PAGE, termPage * PAGE)
 
-  const handleSort = (field: keyof SearchRow) => {
-    if (sortField === field) setSortOrder((o) => (o === "desc" ? "asc" : "desc"))
-    else { setSortField(field); setSortOrder("desc") }
-    setCurrentPage(1)
+  const handleKwSort = (field: keyof KeywordRow) => {
+    setKwSort((s) => ({ field, order: s.field === field && s.order === "desc" ? "asc" : "desc" }))
+    setKwPage(1)
+  }
+  const handleTermSort = (field: keyof TermRow) => {
+    setTermSort((s) => ({ field, order: s.field === field && s.order === "desc" ? "asc" : "desc" }))
+    setTermPage(1)
   }
 
-  const SortArrow = ({ field }: { field: keyof SearchRow }) =>
-    sortField === field ? (
-      <span className="ml-0.5">{sortOrder === "desc" ? "↓" : "↑"}</span>
-    ) : (
-      <span className="ml-0.5 opacity-30">↕</span>
-    )
-
   if (loading) return <Loading message="Carregando Google Search..." />
-  if (error) return <div className="bg-red-50/90 border border-red-200 rounded-2xl p-4"><p className="text-red-600">Erro: {error.message}</p></div>
+  if (error)   return <div className="bg-red-50/90 border border-red-200 rounded-2xl p-4"><p className="text-red-600">Erro: {error.message}</p></div>
 
   return (
     <div className="space-y-4">
+
       {/* Header */}
       <div className="card-overlay rounded-2xl shadow-lg px-5 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <img src="/images/LOGO_JETOUR.png" alt="Jetour" className="h-7 object-contain" />
           <div>
             <h1 className="text-lg font-bold text-gray-900 leading-tight">Google Search</h1>
-            <p className="text-xs text-gray-500">Performance por palavras-chave</p>
+            <p className="text-xs text-gray-500">Keywords · Termos reais · Performance por período</p>
           </div>
         </div>
         <svg className="w-7 h-7" viewBox="0 0 24 24">
@@ -276,14 +374,14 @@ const GoogleSearch: React.FC = () => {
       {/* Big numbers */}
       <div className="grid grid-cols-4 lg:grid-cols-8 gap-3">
         {[
-          { label: "Investimento", value: fmtCurrency(totals.cost),       icon: <DollarSign className="w-4 h-4" /> },
-          { label: "Impressões",   value: fmt(totals.impressions),         icon: <Eye className="w-4 h-4" /> },
-          { label: "Cliques",      value: fmt(totals.clicks),              icon: <MousePointer className="w-4 h-4" /> },
-          { label: "Conversões",   value: fmt(totals.conversions),         icon: <Target className="w-4 h-4" /> },
-          { label: "CPM",          value: fmtCurrency(totals.cpm),         icon: <TrendingUp className="w-4 h-4" /> },
-          { label: "CPC Médio",    value: fmtCurrency(totals.cpc),         icon: <DollarSign className="w-4 h-4" /> },
-          { label: "CTR",          value: fmtPct(totals.ctr),              icon: <TrendingUp className="w-4 h-4" /> },
-          { label: "Taxa Conv.",   value: fmtPct(totals.convRate),         icon: <Target className="w-4 h-4" /> },
+          { label: "Investimento",    value: fmtCurrency(totals.cost),          icon: <DollarSign className="w-4 h-4" /> },
+          { label: "Impressões",      value: fmt(totals.impressions),            icon: <Eye className="w-4 h-4" /> },
+          { label: "Cliques",         value: fmt(totals.clicks),                 icon: <MousePointer className="w-4 h-4" /> },
+          { label: "Conversões",      value: fmt(totals.conversions),            icon: <Target className="w-4 h-4" /> },
+          { label: "CPM",             value: fmtCurrency(totals.cpm),            icon: <TrendingUp className="w-4 h-4" /> },
+          { label: "CPC Médio",       value: fmtCurrency(totals.cpc),            icon: <DollarSign className="w-4 h-4" /> },
+          { label: "CTR",             value: fmtPct(totals.ctr),                 icon: <TrendingUp className="w-4 h-4" /> },
+          { label: "Taxa Conv.",      value: fmtPct(totals.convRate),            icon: <Target className="w-4 h-4" /> },
         ].map((c) => (
           <div key={c.label} className="bg-slate-700/80 rounded-2xl px-3 py-3 flex flex-col gap-1 text-white">
             <div className="flex items-center gap-1.5 text-slate-300 text-xs">{c.icon}{c.label}</div>
@@ -292,72 +390,80 @@ const GoogleSearch: React.FC = () => {
         ))}
       </div>
 
-      {/* Word Cloud + Filters side by side */}
+      {/* Nuvem + Filtros + Top rankings */}
       <div className="grid grid-cols-2 gap-4">
 
-        {/* Word Cloud */}
+        {/* Nuvem de termos reais */}
         <div className="card-overlay rounded-2xl shadow-lg p-4">
-          <p className="text-sm font-bold text-gray-800 mb-1">Nuvem de Palavras-chave</p>
-          <p className="text-xs text-gray-400 mb-3">Tamanho proporcional às impressões</p>
+          <p className="text-sm font-bold text-gray-800 mb-0.5">Nuvem de Termos de Busca</p>
+          <p className="text-xs text-gray-400 mb-3">Termos reais pesquisados · tamanho proporcional às impressões</p>
           <WordCloud words={cloudWords} />
+          <div className="mt-3 flex items-center justify-between text-[10px] text-gray-400 border-t border-gray-100 pt-2">
+            <span>{groupedTerms.length} termos únicos</span>
+            <span>{fmt(totals.termImpressions)} impressões · {fmt(totals.termClicks)} cliques</span>
+          </div>
         </div>
 
-        {/* Rankings + Filters */}
+        {/* Filtros + Top rankings */}
         <div className="card-overlay rounded-2xl shadow-lg p-4 flex flex-col gap-4">
 
           {/* Filtros */}
           <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: "Campanha", value: selectedCampaign, opts: availableCampaigns, set: (v: string) => { setSelectedCampaign(v); setCurrentPage(1) } },
-            { label: "Correspondência", value: selectedMatchType, opts: availableMatchTypes, set: (v: string) => { setSelectedMatchType(v); setCurrentPage(1) } },
-          ].map((f) => (
-            <div key={f.label}>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1"><Filter className="w-3.5 h-3.5" />{f.label}</label>
-              <div className="relative">
-                <select value={f.value} onChange={(e) => f.set(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border-2 border-gray-200 rounded-xl text-xs font-medium text-gray-700 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">Todos</option>
-                  {f.opts.map((o) => <option key={o} value={o}>{o}</option>)}
-                </select>
-                <svg className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            {[
+              { label: "Campanha", value: selectedCampaign, opts: campaigns,
+                set: (v: string) => { setSelectedCampaign(v); setKwPage(1); setTermPage(1) } },
+              { label: "Correspondência", value: selectedMatchType, opts: matchTypes,
+                set: (v: string) => { setSelectedMatchType(v); setKwPage(1); setTermPage(1) } },
+            ].map((f) => (
+              <div key={f.label}>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1">
+                  <Filter className="w-3.5 h-3.5" />{f.label}
+                </label>
+                <div className="relative">
+                  <select value={f.value} onChange={(e) => f.set(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border-2 border-gray-200 rounded-xl text-xs font-medium text-gray-700 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Todos</option>
+                    {f.opts.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                  <svg className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
               </div>
+            ))}
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />De</label>
+              <input type="date" value={start} onChange={(e) => { setDateRange((p) => ({ ...p, start: e.target.value })); setKwPage(1); setTermPage(1) }}
+                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
-          ))}
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />De</label>
-            <input type="date" value={dateRange.start} onChange={(e) => { setDateRange((p) => ({ ...p, start: e.target.value })); setCurrentPage(1) }}
-              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />Até</label>
+              <input type="date" value={end} onChange={(e) => { setDateRange((p) => ({ ...p, end: e.target.value })); setKwPage(1); setTermPage(1) }}
+                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />Até</label>
-            <input type="date" value={dateRange.end} onChange={(e) => { setDateRange((p) => ({ ...p, end: e.target.value })); setCurrentPage(1) }}
-              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          </div>{/* fim grid filtros */}
 
-          {/* Divider */}
           <div className="border-t border-gray-100" />
 
           {/* Top 10 lado a lado */}
           <div className="grid grid-cols-2 gap-3">
-            {/* Top Cliques */}
             <div>
               <p className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1">
-                <MousePointer className="w-3.5 h-3.5 text-blue-500" /> Top 10 — Cliques
+                <MousePointer className="w-3.5 h-3.5 text-blue-500" /> Top Keywords — Cliques
               </p>
               <div className="space-y-1">
-                {[...grouped].sort((a, b) => b.clicks - a.clicks).slice(0, 10).map((r, i) => {
-                  const pct = grouped[0]?.clicks ? (r.clicks / [...grouped].sort((a,b)=>b.clicks-a.clicks)[0].clicks) * 100 : 0
+                {[...groupedKeywords].sort((a, b) => b.clicks - a.clicks).slice(0, 10).map((r, i) => {
+                  const max = [...groupedKeywords].sort((a,b)=>b.clicks-a.clicks)[0]?.clicks || 1
                   return (
                     <div key={i} className="flex items-center gap-2">
-                      <span className="text-[10px] text-gray-400 w-4 text-right flex-shrink-0">{i + 1}</span>
+                      <span className="text-[10px] text-gray-400 w-4 text-right shrink-0">{i + 1}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
                           <span className="text-[10px] text-gray-700 truncate font-medium">{r.keyword}</span>
-                          <span className="text-[10px] font-bold text-blue-600 flex-shrink-0 ml-1">{fmt(r.clicks)}</span>
+                          <span className="text-[10px] font-bold text-blue-600 shrink-0 ml-1">{fmt(r.clicks)}</span>
                         </div>
                         <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-500 rounded-full" style={{ width: `${pct}%` }} />
+                          <div className="h-full bg-blue-500 rounded-full" style={{ width: `${(r.clicks/max)*100}%` }} />
                         </div>
                       </div>
                     </div>
@@ -365,26 +471,23 @@ const GoogleSearch: React.FC = () => {
                 })}
               </div>
             </div>
-
-            {/* Top CTR */}
             <div>
               <p className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1">
-                <TrendingUp className="w-3.5 h-3.5 text-green-500" /> Top 10 — CTR
+                <Search className="w-3.5 h-3.5 text-purple-500" /> Top Termos Reais — Cliques
               </p>
               <div className="space-y-1">
-                {[...grouped].filter(r => r.impressions >= 10).sort((a, b) => b.ctr - a.ctr).slice(0, 10).map((r, i) => {
-                  const maxCtr = [...grouped].filter(r => r.impressions >= 10).sort((a,b)=>b.ctr-a.ctr)[0]?.ctr || 1
-                  const pct = (r.ctr / maxCtr) * 100
+                {[...groupedTerms].sort((a, b) => b.clicks - a.clicks).slice(0, 10).map((r, i) => {
+                  const max = [...groupedTerms].sort((a,b)=>b.clicks-a.clicks)[0]?.clicks || 1
                   return (
                     <div key={i} className="flex items-center gap-2">
-                      <span className="text-[10px] text-gray-400 w-4 text-right flex-shrink-0">{i + 1}</span>
+                      <span className="text-[10px] text-gray-400 w-4 text-right shrink-0">{i + 1}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-[10px] text-gray-700 truncate font-medium">{r.keyword}</span>
-                          <span className="text-[10px] font-bold text-green-600 flex-shrink-0 ml-1">{fmtPct(r.ctr)}</span>
+                          <span className="text-[10px] text-gray-700 truncate font-medium">{r.searchTerm}</span>
+                          <span className="text-[10px] font-bold text-purple-600 shrink-0 ml-1">{fmt(r.clicks)}</span>
                         </div>
                         <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-green-500 rounded-full" style={{ width: `${pct}%` }} />
+                          <div className="h-full bg-purple-500 rounded-full" style={{ width: `${(r.clicks/max)*100}%` }} />
                         </div>
                       </div>
                     </div>
@@ -394,69 +497,147 @@ const GoogleSearch: React.FC = () => {
             </div>
           </div>
 
-        </div>{/* fim card rankings+filters */}
+        </div>
+      </div>
 
-      </div>{/* fim grid word cloud + filters */}
-
-      {/* Table */}
+      {/* Tabs + Tabelas */}
       <div className="card-overlay rounded-2xl shadow p-4">
+
+        {/* Tabs */}
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-bold text-gray-800">Keywords ({grouped.length})</p>
-          <button onClick={() => setSortOrder((o) => o === "desc" ? "asc" : "desc")}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-100 hover:bg-slate-200 text-gray-700 transition-colors">
-            <ArrowUpDown className="w-3.5 h-3.5" /> Ordenar
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-slate-700 text-white">
-                <th className="text-left py-2.5 px-3 font-semibold rounded-l-xl">Palavra-chave / Campanha</th>
-                <th className="text-left py-2.5 px-3 font-semibold">Correspondência</th>
-                <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300" onClick={() => handleSort("cost")}>Invest. <SortArrow field="cost" /></th>
-                <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300" onClick={() => handleSort("clicks")}>Cliques <SortArrow field="clicks" /></th>
-                <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300" onClick={() => handleSort("impressions")}>Impressões <SortArrow field="impressions" /></th>
-                <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300" onClick={() => handleSort("ctr")}>CTR <SortArrow field="ctr" /></th>
-                <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300" onClick={() => handleSort("avgCpc")}>CPC Médio <SortArrow field="avgCpc" /></th>
-                <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300 rounded-r-xl" onClick={() => handleSort("conversions")}>Conversões <SortArrow field="conversions" /></th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginated.map((r, i) => (
-                <tr key={i} className={i % 2 === 0 ? "bg-slate-50/60" : "bg-white/40"}>
-                  <td className="py-2.5 px-3 max-w-xs">
-                    <p className="font-semibold text-gray-900 leading-tight line-clamp-2">{r.keyword || "—"}</p>
-                    <p className="text-gray-400 text-xs mt-0.5 truncate">{r.campaignName}</p>
-                  </td>
-                  <td className="py-2.5 px-3">
-                    {r.matchType ? (
-                      <span className="px-2 py-0.5 rounded-full text-white text-xs font-semibold bg-blue-500">{r.matchType}</span>
-                    ) : "—"}
-                  </td>
-                  <td className="py-2.5 px-3 text-right font-semibold text-gray-800">{fmtCurrency(r.cost)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-700">{fmt(r.clicks)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-700">{fmt(r.impressions)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-700">{fmtPct(r.ctr)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-700">{fmtCurrency(r.avgCpc)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-700">{r.conversions > 0 ? fmt(r.conversions) : "—"}</td>
-                </tr>
-              ))}
-              {grouped.length === 0 && (
-                <tr><td colSpan={8} className="py-10 text-center text-gray-400">Nenhum dado disponível</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
-          <p className="text-xs text-gray-500">{(currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, grouped.length)} de {grouped.length}</p>
-          <div className="flex gap-2">
-            <button onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))} disabled={currentPage === 1}
-              className="px-3 py-1.5 rounded-xl text-xs font-medium border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">← Anterior</button>
-            <span className="px-3 py-1.5 text-xs text-gray-600">{currentPage}/{totalPages}</span>
-            <button onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))} disabled={currentPage === totalPages}
-              className="px-3 py-1.5 rounded-xl text-xs font-medium border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">Próximo →</button>
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+            <button onClick={() => setActiveTab("keywords")}
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${activeTab === "keywords" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
+              Keywords ({groupedKeywords.length})
+            </button>
+            <button onClick={() => setActiveTab("terms")}
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${activeTab === "terms" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
+              <Search className="w-3 h-3" /> Termos Reais ({groupedTerms.length})
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+            {activeTab === "keywords"
+              ? <span>Fonte: Google - Search · enriquecido com Search Keyword (lifetime)</span>
+              : <span>Fonte: Google - Search 2 · termos digitados pelos usuários</span>}
           </div>
         </div>
+
+        {/* Tabela Keywords */}
+        {activeTab === "keywords" && (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-700 text-white">
+                    <th className="text-left py-2.5 px-3 font-semibold rounded-l-xl">Palavra-chave / Campanha</th>
+                    <th className="text-left py-2.5 px-3 font-semibold">Tipo</th>
+                    <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300" onClick={() => handleKwSort("cost")}>Invest. <SortArrow field="cost" sortField={kwSort.field} sortOrder={kwSort.order} /></th>
+                    <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300" onClick={() => handleKwSort("clicks")}>Cliques <SortArrow field="clicks" sortField={kwSort.field} sortOrder={kwSort.order} /></th>
+                    <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300" onClick={() => handleKwSort("impressions")}>Impressões <SortArrow field="impressions" sortField={kwSort.field} sortOrder={kwSort.order} /></th>
+                    <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300" onClick={() => handleKwSort("ctr")}>CTR <SortArrow field="ctr" sortField={kwSort.field} sortOrder={kwSort.order} /></th>
+                    <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300" onClick={() => handleKwSort("avgCpc")}>CPC <SortArrow field="avgCpc" sortField={kwSort.field} sortOrder={kwSort.order} /></th>
+                    <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300" onClick={() => handleKwSort("conversions")}>Conv. <SortArrow field="conversions" sortField={kwSort.field} sortOrder={kwSort.order} /></th>
+                    <th className="text-right py-2.5 px-3 font-semibold rounded-r-xl" title="Cliques acumulados no lifetime da keyword (Search Keyword)">Lifetime ↗</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {kwPaginated.map((r, i) => (
+                    <tr key={i} className={i % 2 === 0 ? "bg-slate-50/60" : "bg-white/40"}>
+                      <td className="py-2.5 px-3 max-w-xs">
+                        <p className="font-semibold text-gray-900 leading-tight">{r.keyword || "—"}</p>
+                        <p className="text-gray-400 text-[10px] mt-0.5 truncate">{r.campaignName}</p>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className="px-2 py-0.5 rounded-full text-white text-[10px] font-semibold bg-blue-500">{r.matchType || "—"}</span>
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-semibold text-gray-800">{fmtCurrency(r.cost)}</td>
+                      <td className="py-2.5 px-3 text-right text-gray-700">{fmt(r.clicks)}</td>
+                      <td className="py-2.5 px-3 text-right text-gray-700">{fmt(r.impressions)}</td>
+                      <td className="py-2.5 px-3 text-right text-gray-700">{fmtPct(r.ctr)}</td>
+                      <td className="py-2.5 px-3 text-right text-gray-700">{fmtCurrency(r.avgCpc)}</td>
+                      <td className="py-2.5 px-3 text-right text-gray-700">{r.conversions > 0 ? fmt(r.conversions) : "—"}</td>
+                      <td className="py-2.5 px-3 text-right">
+                        {r.lifetimeClicks > 0
+                          ? <span className="text-[10px] text-indigo-600 font-semibold">{fmt(r.lifetimeClicks)} cliques</span>
+                          : <span className="text-[10px] text-gray-300">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                  {groupedKeywords.length === 0 && (
+                    <tr><td colSpan={9} className="py-10 text-center text-gray-400">Nenhum dado disponível</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+              <p className="text-xs text-gray-500">{(kwPage - 1) * PAGE + 1}–{Math.min(kwPage * PAGE, groupedKeywords.length)} de {groupedKeywords.length}</p>
+              <div className="flex gap-2">
+                <button onClick={() => setKwPage((p) => Math.max(p - 1, 1))} disabled={kwPage === 1}
+                  className="px-3 py-1.5 rounded-xl text-xs font-medium border border-gray-200 hover:bg-gray-50 disabled:opacity-40">← Anterior</button>
+                <span className="px-3 py-1.5 text-xs text-gray-600">{kwPage}/{kwTotalPages}</span>
+                <button onClick={() => setKwPage((p) => Math.min(p + 1, kwTotalPages))} disabled={kwPage === kwTotalPages}
+                  className="px-3 py-1.5 rounded-xl text-xs font-medium border border-gray-200 hover:bg-gray-50 disabled:opacity-40">Próximo →</button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Tabela Termos Reais */}
+        {activeTab === "terms" && (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-700 text-white">
+                    <th className="text-left py-2.5 px-3 font-semibold rounded-l-xl">Termo de Busca Real</th>
+                    <th className="text-left py-2.5 px-3 font-semibold">Status</th>
+                    <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300" onClick={() => handleTermSort("cost")}>Invest. <SortArrow field="cost" sortField={termSort.field} sortOrder={termSort.order} /></th>
+                    <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300" onClick={() => handleTermSort("clicks")}>Cliques <SortArrow field="clicks" sortField={termSort.field} sortOrder={termSort.order} /></th>
+                    <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300" onClick={() => handleTermSort("impressions")}>Impressões <SortArrow field="impressions" sortField={termSort.field} sortOrder={termSort.order} /></th>
+                    <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300" onClick={() => handleTermSort("ctr")}>CTR <SortArrow field="ctr" sortField={termSort.field} sortOrder={termSort.order} /></th>
+                    <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300" onClick={() => handleTermSort("avgCpc")}>CPC <SortArrow field="avgCpc" sortField={termSort.field} sortOrder={termSort.order} /></th>
+                    <th className="text-right py-2.5 px-3 font-semibold cursor-pointer hover:text-blue-300 rounded-r-xl" onClick={() => handleTermSort("conversions")}>Conv. <SortArrow field="conversions" sortField={termSort.field} sortOrder={termSort.order} /></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {termPaginated.map((r, i) => (
+                    <tr key={i} className={i % 2 === 0 ? "bg-slate-50/60" : "bg-white/40"}>
+                      <td className="py-2.5 px-3 max-w-xs">
+                        <p className="font-semibold text-gray-900 leading-tight">{r.searchTerm || "—"}</p>
+                        <p className="text-gray-400 text-[10px] mt-0.5">{r.matchType}</p>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className={`px-2 py-0.5 rounded-full text-white text-[10px] font-semibold ${r.addedExcluded === "ADDED" ? "bg-green-500" : r.addedExcluded === "EXCLUDED" ? "bg-red-500" : "bg-gray-400"}`}>
+                          {r.addedExcluded || "—"}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-semibold text-gray-800">{fmtCurrency(r.cost)}</td>
+                      <td className="py-2.5 px-3 text-right text-gray-700">{fmt(r.clicks)}</td>
+                      <td className="py-2.5 px-3 text-right text-gray-700">{fmt(r.impressions)}</td>
+                      <td className="py-2.5 px-3 text-right text-gray-700">{fmtPct(r.ctr)}</td>
+                      <td className="py-2.5 px-3 text-right text-gray-700">{fmtCurrency(r.avgCpc)}</td>
+                      <td className="py-2.5 px-3 text-right text-gray-700">{r.conversions > 0 ? fmt(r.conversions) : "—"}</td>
+                    </tr>
+                  ))}
+                  {groupedTerms.length === 0 && (
+                    <tr><td colSpan={8} className="py-10 text-center text-gray-400">Nenhum dado disponível</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+              <p className="text-xs text-gray-500">{(termPage - 1) * PAGE + 1}–{Math.min(termPage * PAGE, groupedTerms.length)} de {groupedTerms.length}</p>
+              <div className="flex gap-2">
+                <button onClick={() => setTermPage((p) => Math.max(p - 1, 1))} disabled={termPage === 1}
+                  className="px-3 py-1.5 rounded-xl text-xs font-medium border border-gray-200 hover:bg-gray-50 disabled:opacity-40">← Anterior</button>
+                <span className="px-3 py-1.5 text-xs text-gray-600">{termPage}/{termTotalPages}</span>
+                <button onClick={() => setTermPage((p) => Math.min(p + 1, termTotalPages))} disabled={termPage === termTotalPages}
+                  className="px-3 py-1.5 rounded-xl text-xs font-medium border border-gray-200 hover:bg-gray-50 disabled:opacity-40">Próximo →</button>
+              </div>
+            </div>
+          </>
+        )}
+
       </div>
     </div>
   )
