@@ -7,7 +7,7 @@ import { PostEmbed } from "../CriativosMetaAds/components/PostEmbed"
 import Loading from "../../components/Loading/Loading"
 import {
   Users, Eye, Heart, MessageCircle, Bookmark, TrendingUp, TrendingDown,
-  ArrowUpDown, BarChart2, Link as LinkIcon, Play, Video, BookImage,
+  ArrowUpDown, BarChart2, Play,
 } from "lucide-react"
 import { ResponsiveLine } from "@nivo/line"
 
@@ -40,16 +40,6 @@ interface IgPost {
   follows: number
 }
 
-interface IgStory {
-  mediaUrl: string
-  permalink: string
-  impressions: number
-  reach: number
-  exits: number
-  replies: number
-  tapsForward: number
-  tapsBack: number
-}
 
 interface FollowDay {
   date: string
@@ -260,7 +250,7 @@ const IgPostCard: React.FC<{ post: IgPost }> = ({ post }) => {
 type SortKey = "engagementRate" | "impressions" | "likes" | "comments" | "saves" | "shares" | "plays"
 
 const OrganicoInstagram: React.FC = () => {
-  const { igPosts, igFollows, igMedia, igStory, igVideo, loading, error } = useOrganicData()
+  const { igPosts, igFollows, igMedia, igVideo, loading, error } = useOrganicData()
   const [sortBy, setSortBy] = useState<SortKey>("engagementRate")
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: "", end: "" })
   const [activeTab, setActiveTab] = useState<"posts" | "videos" | "stories">("posts")
@@ -338,11 +328,15 @@ const OrganicoInstagram: React.FC = () => {
       const permalink = r[idx("Media Permalink")] || ""
       if (!permalink) return
       const postTimeRaw = r[idx("Media Post Time")] || ""
-      // Format: "2026-04-14T17:00:25+0000" → take first 10 chars
       const postDate = postTimeRaw.substring(0, 10)
+      // Impressions está zerado na API; Video Views / Views é o campo real
+      const videoViews = parseN(r[idx("Video Views")])
+      const viewsFallback = parseN(r[idx("Views")])
+      const impressions = videoViews > 0 ? videoViews : viewsFallback
       map.set(permalink, {
         shares: parseN(r[idx("Media Shares")]),
         plays: parseN(r[idx("Media Plays")]),
+        impressions,
         totalWatchTime: parseN(r[idx("Total Watch Time")]),
         avgWatchTime: parseN(r[idx("Avg Reel Watch Time")]),
         profileVisits: parseN(r[idx("Profile Visits")]),
@@ -372,7 +366,7 @@ const OrganicoInstagram: React.FC = () => {
         caption: r[idx("Media Caption")] || "",
         comments: parseN(r[idx("Media Comments")]),
         likes: parseN(r[idx("Media Likes")]),
-        impressions: parseN(r[idx("Impressions")]),
+        impressions: extra.impressions ?? parseN(r[idx("Impressions")]),
         reach,
         saves: parseN(r[idx("Saves")]),
         shares: extra.shares ?? 0,
@@ -399,6 +393,10 @@ const OrganicoInstagram: React.FC = () => {
       const engagementRate = reach > 0 ? (totalInteractions / reach) * 100 : 0
       const permalink = r[idx("Media Permalink")] || ""
       const extra = mediaMap.get(permalink) ?? {}
+      // Media Plays pode estar zerado; "Views" é o campo equivalente para Reels
+      const playsRaw = parseN(r[idx("Media Plays")])
+      const viewsRaw = parseN(r[idx("Views")])
+      const plays = playsRaw > 0 ? playsRaw : viewsRaw
       return {
         accountName: r[idx("Account Name")] || "",
         mediaType: "VIDEO",
@@ -407,11 +405,11 @@ const OrganicoInstagram: React.FC = () => {
         caption: r[idx("Media Caption")] || "",
         comments: parseN(r[idx("Media Comments")]),
         likes: parseN(r[idx("Media Likes")]),
-        impressions: parseN(r[idx("Impressions")]),
+        impressions: extra.impressions ?? parseN(r[idx("Impressions")]),
         reach,
         saves: parseN(r[idx("Saves")]),
         shares: parseN(r[idx("Media Shares")]),
-        plays: parseN(r[idx("Media Plays")]),
+        plays,
         totalWatchTime: parseN(r[idx("Total Watch Time")]),
         avgWatchTime: parseN(r[idx("Avg Reel Watch Time")]),
         totalInteractions,
@@ -423,43 +421,44 @@ const OrganicoInstagram: React.FC = () => {
     }).filter((p) => p.permalink)
   }, [igVideo, mediaMap])
 
-  // ── Parse Stories ─────────────────────────────────────────────────────────
-  const allStories = useMemo<IgStory[]>(() => {
-    if (!igStory?.data?.values || igStory.data.values.length < 2) return []
-    const [headers, ...rows] = igStory.data.values
-    const idx = (col: string) => headers.indexOf(col)
-    return rows.map((r: string[]) => ({
-      mediaUrl: r[idx("Media URL")] || "",
-      permalink: r[idx("Media Permalink")] || "",
-      impressions: parseN(r[idx("Impressions")]),
-      reach: parseN(r[idx("Reach")]),
-      exits: parseN(r[idx("Exits")]),
-      replies: parseN(r[idx("Replies")]),
-      tapsForward: parseN(r[idx("Taps Forward")]),
-      tapsBack: parseN(r[idx("Taps Back")]),
-    })).filter((s) => s.permalink)
-  }, [igStory])
 
   // ── Big numbers ────────────────────────────────────────────────────────────
   const bigNumbers = useMemo(() => {
     const latest = filteredDays[filteredDays.length - 1]
     const gainSeguidores = filteredDays.reduce((s, d) => s + d.newFollowers, 0)
+    // Impressões e alcance: soma posts + vídeos para cobrir todo o conteúdo
     const totalImpressions = allPosts.reduce((s, p) => s + p.impressions, 0)
+      + allVideos.reduce((s, p) => s + p.impressions, 0)
     const totalReach = allPosts.reduce((s, p) => s + p.reach, 0)
+      + allVideos.reduce((s, p) => s + p.reach, 0)
     const totalInteractions = allPosts.reduce((s, p) => s + p.totalInteractions, 0)
+      + allVideos.reduce((s, p) => s + p.totalInteractions, 0)
     const totalLikes = allPosts.reduce((s, p) => s + p.likes, 0)
+      + allVideos.reduce((s, p) => s + p.likes, 0)
     const totalComments = allPosts.reduce((s, p) => s + p.comments, 0)
+      + allVideos.reduce((s, p) => s + p.comments, 0)
     const totalSaves = allPosts.reduce((s, p) => s + p.saves, 0)
+      + allVideos.reduce((s, p) => s + p.saves, 0)
     const totalShares = allPosts.reduce((s, p) => s + p.shares, 0)
-    const totalPlays = allVideos.reduce((s, p) => s + p.plays, 0)
+      + allVideos.reduce((s, p) => s + p.shares, 0)
+    // Reproduções: Media Product Type = REELS → soma Video Views da aba Media
+    const totalPlays = (() => {
+      if (!igMedia?.data?.values || igMedia.data.values.length < 2) return 0
+      const [headers, ...rows] = igMedia.data.values
+      const idxType = headers.indexOf("Media Product Type")
+      const idxViews = headers.indexOf("Video Views")
+      return rows.reduce((s: number, r: string[]) => {
+        if ((r[idxType] || "").trim().toUpperCase() === "REELS") {
+          return s + parseN(r[idxViews])
+        }
+        return s
+      }, 0)
+    })()
     const totalWatchTime = allVideos.reduce((s, p) => s + p.totalWatchTime, 0)
-    const avgEngagement = allPosts.length > 0
-      ? allPosts.reduce((s, p) => s + p.engagementRate, 0) / allPosts.length
+    const allContent = [...allPosts, ...allVideos]
+    const avgEngagement = allContent.length > 0
+      ? allContent.reduce((s, p) => s + p.engagementRate, 0) / allContent.length
       : 0
-    const profileViews = filteredDays.reduce((s, d) => s + d.profileViews, 0)
-    const websiteClicks = filteredDays.reduce((s, d) => s + d.websiteClicks, 0)
-    const storyImpressions = allStories.reduce((s, st) => s + st.impressions, 0)
-    const storyReach = allStories.reduce((s, st) => s + st.reach, 0)
     return {
       followers: latest?.followers ?? 0,
       gainSeguidores,
@@ -473,12 +472,8 @@ const OrganicoInstagram: React.FC = () => {
       totalPlays,
       totalWatchTime,
       avgEngagement,
-      profileViews,
-      websiteClicks,
-      storyImpressions,
-      storyReach,
     }
-  }, [filteredDays, allPosts, allVideos, allStories])
+  }, [filteredDays, allPosts, allVideos, igMedia])
 
   // ── Trend ──────────────────────────────────────────────────────────────────
   const igTrend = useMemo(() => {
@@ -496,15 +491,25 @@ const OrganicoInstagram: React.FC = () => {
     [filteredDays]
   )
 
-  const viewsReachChartSeries = useMemo(() => [
-    { id: "Impressões", color: "#ec4899", data: filteredDays.map((d) => ({ x: d.date, y: d.impressions })) },
+  const reachChartSeries = useMemo(() => [
     { id: "Alcance", color: "#8b5cf6", data: filteredDays.map((d) => ({ x: d.date, y: d.reach })) },
   ], [filteredDays])
 
-  const profileViewsChartData = useMemo(() =>
-    filteredDays.map((d) => ({ x: d.date, y: d.profileViews })),
-    [filteredDays]
-  )
+  // Postagens por dia — conta publicações por data via Media Post Time da aba Media
+  const postsByDayChartData = useMemo(() => {
+    if (!igMedia?.data?.values || igMedia.data.values.length < 2) return []
+    const [headers, ...rows] = igMedia.data.values
+    const idxTime = headers.indexOf("Media Post Time")
+    const byDate = new Map<string, number>()
+    rows.forEach((r: string[]) => {
+      const date = (r[idxTime] || "").substring(0, 10)
+      if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) return
+      byDate.set(date, (byDate.get(date) ?? 0) + 1)
+    })
+    return Array.from(byDate.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([x, y]) => ({ x, y }))
+  }, [igMedia])
 
   // ── Day-of-week activity ───────────────────────────────────────────────────
   const dowActivity = useMemo(() => {
@@ -527,17 +532,6 @@ const OrganicoInstagram: React.FC = () => {
     [currentList, sortBy]
   )
 
-  // ── Stories stats ──────────────────────────────────────────────────────────
-  const storiesStats = useMemo(() => {
-    const totalImpressoes = allStories.reduce((s, st) => s + st.impressions, 0)
-    const totalAlcance = allStories.reduce((s, st) => s + st.reach, 0)
-    const totalExits = allStories.reduce((s, st) => s + st.exits, 0)
-    const totalReplies = allStories.reduce((s, st) => s + st.replies, 0)
-    const totalTapsForward = allStories.reduce((s, st) => s + st.tapsForward, 0)
-    const totalTapsBack = allStories.reduce((s, st) => s + st.tapsBack, 0)
-    const exitRate = totalImpressoes > 0 ? (totalExits / totalImpressoes) * 100 : 0
-    return { totalImpressoes, totalAlcance, totalExits, totalReplies, totalTapsForward, totalTapsBack, exitRate }
-  }, [allStories])
 
   if (loading) return <Loading message="Carregando dados do Instagram..." />
   if (error) return (
@@ -592,10 +586,6 @@ const OrganicoInstagram: React.FC = () => {
           { label: "Salvos",              value: fmt(bigNumbers.totalSaves),        icon: <Bookmark className="w-4 h-4" /> },
           { label: "Compartilhados",      value: fmt(bigNumbers.totalShares),       icon: <ArrowUpDown className="w-4 h-4" /> },
           { label: "Reproduções (Reels)", value: fmt(bigNumbers.totalPlays),        icon: <Play className="w-4 h-4" /> },
-          { label: "Visitas ao perfil",   value: fmt(bigNumbers.profileViews),      icon: <Users className="w-4 h-4" /> },
-          { label: "Cliques no link",     value: fmt(bigNumbers.websiteClicks),     icon: <LinkIcon className="w-4 h-4" /> },
-          { label: "Story — Impressões",  value: fmt(bigNumbers.storyImpressions),  icon: <Video className="w-4 h-4" /> },
-          { label: "Story — Alcance",     value: fmt(bigNumbers.storyReach),        icon: <BookImage className="w-4 h-4" /> },
           { label: "Taxa de engajamento", value: fmtPct(bigNumbers.avgEngagement),  icon: <TrendingUp className="w-4 h-4" /> },
         ].map((c) => (
           <div key={c.label} className="bg-slate-700/80 rounded-2xl px-3 py-3 flex flex-col gap-1 text-white">
@@ -615,14 +605,14 @@ const OrganicoInstagram: React.FC = () => {
         </div>
         <div className="card-overlay rounded-2xl shadow-lg p-4">
           <LineChart
-            series={viewsReachChartSeries}
-            label="Visualizações e Alcance"
+            series={reachChartSeries}
+            label="Alcance por dia"
           />
         </div>
         <div className="card-overlay rounded-2xl shadow-lg p-4">
           <LineChart
-            series={[{ id: "Visitas ao perfil", color: "#f59e0b", data: profileViewsChartData }]}
-            label="Visitas ao perfil"
+            series={[{ id: "Postagens", color: "#ec4899", data: postsByDayChartData }]}
+            label="Postagens por dia"
           />
         </div>
       </div>
@@ -652,33 +642,6 @@ const OrganicoInstagram: React.FC = () => {
             </div>
           </div>
 
-          {/* Stories */}
-          {allStories.length > 0 && (
-            <div className="card-overlay rounded-2xl shadow-lg p-4">
-              <p className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
-                <Video className="w-4 h-4 text-pink-500" />
-                Stories ({allStories.length})
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: "Impressões",    value: fmt(storiesStats.totalImpressoes) },
-                  { label: "Alcance",       value: fmt(storiesStats.totalAlcance) },
-                  { label: "Respostas",     value: fmt(storiesStats.totalReplies) },
-                  { label: "Saídas",        value: fmt(storiesStats.totalExits) },
-                  { label: "Taps →",        value: fmt(storiesStats.totalTapsForward) },
-                  { label: "Taps ←",        value: fmt(storiesStats.totalTapsBack) },
-                ].map((m) => (
-                  <div key={m.label} className="bg-slate-700/80 rounded-xl px-2 py-2 text-white text-center">
-                    <p className="text-[10px] text-slate-300">{m.label}</p>
-                    <p className="text-xs font-bold">{m.value}</p>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[10px] text-gray-400 mt-2 text-center">
-                Taxa de saída: {fmtPct(storiesStats.exitRate)}
-              </p>
-            </div>
-          )}
         </div>
 
         {/* Posts / Videos com tabs */}

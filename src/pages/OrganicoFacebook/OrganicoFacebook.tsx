@@ -7,7 +7,7 @@ import { PostEmbed } from "../CriativosMetaAds/components/PostEmbed"
 import Loading from "../../components/Loading/Loading"
 import {
   Users, Eye, Heart, MessageCircle, Share2, TrendingUp, TrendingDown,
-  ArrowUpDown, BarChart2
+  ArrowUpDown, BarChart2, Play,
 } from "lucide-react"
 import { ResponsiveLine } from "@nivo/line"
 
@@ -20,26 +20,35 @@ interface FbPost {
   message: string
   postType: string
   publishTime: string
+  publishDate: string
   totalLikes: number
   totalComments: number
   totalShares: number
   totalReactions: number
-  engagedFans: number
-  organicImpressions: number
+  // aba Video Post (enriquecimento)
+  reach: number
+  videoViews: number
+  views30s: number
   engagementRate: number
 }
 
 interface FbFollowDay {
   date: string
-  lifetimeLikes: number
   totalFollows: number
   newFollows: number
   newUnfollows: number
 }
 
+interface FbPageDay {
+  date: string
+  totalReach: number
+  totalImpressions: number
+  totalVideoViews: number
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const parseN = (v: string) => {
+const parseN = (v: string | undefined) => {
   if (!v || v === "-" || v === "") return 0
   const n = Number(v.replace(/\./g, "").replace(",", "."))
   return isNaN(n) ? 0 : n
@@ -53,6 +62,11 @@ const fmt = (v: number) => {
 
 const fmtPct = (v: number) => `${v.toFixed(2).replace(".", ",")}%`
 
+const fmtDate = (iso: string) => {
+  const p = iso.split("-")
+  return p.length === 3 ? `${p[2]}/${p[1]}` : iso
+}
+
 // ── Chart ─────────────────────────────────────────────────────────────────────
 
 const LineChart: React.FC<{
@@ -60,7 +74,7 @@ const LineChart: React.FC<{
   label: string
 }> = ({ series, label }) => {
   const allData = series.flatMap((s) => s.data)
-  if (allData.length < 2) return null
+  if (allData.length < 2) return <div className="flex items-center justify-center h-[172px]"><p className="text-xs text-gray-400">Sem dados suficientes</p></div>
 
   const sampleSeries = series.map((s) => ({
     ...s,
@@ -70,10 +84,6 @@ const LineChart: React.FC<{
   const xTickValues = sampleSeries[0].data
     .filter((_, i) => i % tickStep === 0 || i === sampleSeries[0].data.length - 1)
     .map((d) => d.x)
-  const fmtDate = (iso: string) => {
-    const parts = iso.split("-")
-    return parts.length === 3 ? `${parts[2]}/${parts[1]}` : iso
-  }
 
   return (
     <div>
@@ -146,8 +156,8 @@ const FbPostCard: React.FC<{ post: FbPost }> = ({ post }) => {
             <p className="text-[10px] text-gray-400">Reações</p>
           </div>
           <div className="text-center">
-            <p className="text-xs font-bold text-gray-900">{fmt(post.organicImpressions)}</p>
-            <p className="text-[10px] text-gray-400">Impressões</p>
+            <p className="text-xs font-bold text-gray-900">{fmt(post.reach)}</p>
+            <p className="text-[10px] text-gray-400">Alcance</p>
           </div>
           <div className="text-center">
             <p className="text-xs font-bold text-blue-600">{fmtPct(post.engagementRate)}</p>
@@ -166,18 +176,20 @@ const FbPostCard: React.FC<{ post: FbPost }> = ({ post }) => {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-bold text-gray-800">Facebook — {post.postType}</p>
+              <p className="text-sm font-bold text-gray-800">Facebook — {post.postType.replace(/_/g, " ")}</p>
               <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
             </div>
             <PostEmbed url={post.permalink} />
             <div className="mt-4 grid grid-cols-3 gap-2">
               {[
-                { label: "Curtidas", value: fmt(post.totalLikes) },
-                { label: "Reações", value: fmt(post.totalReactions) },
-                { label: "Impressões", value: fmt(post.organicImpressions) },
-                { label: "Comentários", value: fmt(post.totalComments) },
-                { label: "Compartilh.", value: fmt(post.totalShares) },
-                { label: "Engajamento", value: fmtPct(post.engagementRate) },
+                { label: "Curtidas",       value: fmt(post.totalLikes) },
+                { label: "Reações",        value: fmt(post.totalReactions) },
+                { label: "Comentários",    value: fmt(post.totalComments) },
+                { label: "Compartilh.",    value: fmt(post.totalShares) },
+                { label: "Alcance",        value: fmt(post.reach) },
+                ...(post.videoViews > 0 ? [{ label: "Video Views", value: fmt(post.videoViews) }] : []),
+                ...(post.views30s > 0    ? [{ label: "Views 30s",  value: fmt(post.views30s) }]   : []),
+                { label: "Engajamento",    value: fmtPct(post.engagementRate) },
               ].map((m) => (
                 <div key={m.label} className="bg-slate-700/80 rounded-xl px-3 py-2 text-white text-center">
                   <p className="text-xs text-slate-300">{m.label}</p>
@@ -194,40 +206,68 @@ const FbPostCard: React.FC<{ post: FbPost }> = ({ post }) => {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+type SortKey = "totalReactions" | "totalLikes" | "totalComments" | "totalShares" | "reach" | "videoViews"
+
 const OrganicoFacebook: React.FC = () => {
-  const { fbPosts, fbFollows, loading, error } = useOrganicData()
-  const [sortBy, setSortBy] = useState<"engagementRate" | "organicImpressions" | "totalLikes" | "totalComments" | "totalShares">("engagementRate")
+  const { fbPosts, fbFollows, fbPage, fbVideoPost, loading, error } = useOrganicData()
+  const [sortBy, setSortBy] = useState<SortKey>("totalReactions")
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: "", end: "" })
+
+  // ── Parse Video Post (enriquecimento por postId) ────────────────────────────
+  const videoPostMap = useMemo<Map<string, Partial<FbPost>>>(() => {
+    const map = new Map<string, Partial<FbPost>>()
+    if (!fbVideoPost?.data?.values || fbVideoPost.data.values.length < 2) return map
+    const [headers, ...rows] = fbVideoPost.data.values
+    const idx = (col: string) => headers.indexOf(col)
+    rows.forEach((r: string[]) => {
+      const postId = r[idx("Post ID")] || ""
+      if (!postId) return
+      // "Lifetime Post Total Impressions" está corrompido no Sheets (retorna timestamp 1899-12-30)
+      // Usamos "Lifetime Post Total Reach" como base de alcance e "Unique Video Views" como visualizações únicas
+      map.set(postId, {
+        reach:      parseN(r[idx("Lifetime Post Total Reach (Unique)")]),
+        videoViews: parseN(r[idx("Unique Video Views")]),
+        views30s:   parseN(r[idx("Total 30-Second Views")]),
+      })
+    })
+    return map
+  }, [fbVideoPost])
 
   // ── Parse Posts ─────────────────────────────────────────────────────────────
   const allPosts = useMemo<FbPost[]>(() => {
     if (!fbPosts?.data?.values || fbPosts.data.values.length < 2) return []
     const [headers, ...rows] = fbPosts.data.values
     const idx = (col: string) => headers.indexOf(col)
-    return rows.map((r) => {
-      const engagedFans = parseN(r[idx("Post Engaged Fans")])
-      const organicImpressions = parseN(r[idx("Post Organic Impressions")])
+    return rows.map((r: string[]) => {
+      const postId       = r[idx("Post ID")] || ""
       const totalReactions = parseN(r[idx("Post Total Reactions")])
-      const totalComments = parseN(r[idx("Post Total Comments")])
-      const totalShares = parseN(r[idx("Post Total Shares")])
-      const engagementRate = organicImpressions > 0 ? ((engagedFans) / organicImpressions) * 100 : 0
+      const totalComments  = parseN(r[idx("Post Total Comments")])
+      const totalShares    = parseN(r[idx("Post Total Shares")])
+      const extra          = videoPostMap.get(postId) ?? {}
+      const reach          = extra.reach ?? 0
+      // Engajamento = (reações + comentários + compartilhamentos) / alcance
+      const totalEngaged   = totalReactions + totalComments + totalShares
+      const engagementRate = reach > 0 ? (totalEngaged / reach) * 100 : 0
+      const publishTime    = r[idx("Post Publish Time")] || ""
       return {
-        pageName: r[idx("Page Name")] || "",
-        postId: r[idx("Post ID")] || "",
-        permalink: r[idx("Post Permalink")] || "",
-        message: r[idx("Post Message")] || "",
-        postType: r[idx("Post Type")] || "",
-        publishTime: r[idx("Post Publish Time")] || "",
-        totalLikes: parseN(r[idx("Post Total Likes")]),
+        pageName:        r[idx("Page Name")] || "",
+        postId,
+        permalink:       r[idx("Post Permalink")] || "",
+        message:         r[idx("Post Message")] || "",
+        postType:        r[idx("Post Type")] || "",
+        publishTime,
+        publishDate:     publishTime.substring(0, 10),
+        totalLikes:      parseN(r[idx("Post Total Likes")]),
         totalComments,
         totalShares,
         totalReactions,
-        engagedFans,
-        organicImpressions,
+        reach,
+        videoViews:      extra.videoViews ?? 0,
+        views30s:        extra.views30s   ?? 0,
         engagementRate,
       }
     }).filter((p) => p.permalink)
-  }, [fbPosts])
+  }, [fbPosts, videoPostMap])
 
   // ── Parse Follows ───────────────────────────────────────────────────────────
   const followDays = useMemo<FbFollowDay[]>(() => {
@@ -235,60 +275,86 @@ const OrganicoFacebook: React.FC = () => {
     const [headers, ...rows] = fbFollows.data.values
     const idx = (col: string) => headers.indexOf(col)
     return rows
-      .map((r) => ({
-        date: r[idx("Day")] || "",
-        lifetimeLikes: parseN(r[idx("Lifetime Likes")]),
+      .map((r: string[]) => ({
+        date:         r[idx("Day")] || "",
         totalFollows: parseN(r[idx("Total Follows")]),
-        newFollows: parseN(r[idx("New Follows")]),
+        newFollows:   parseN(r[idx("New Follows")]),
         newUnfollows: parseN(r[idx("New Unfollows")]),
       }))
-      .filter((d) => d.date)
+      .filter((d) => d.date.match(/^\d{4}-\d{2}-\d{2}$/))
       .sort((a, b) => a.date.localeCompare(b.date))
   }, [fbFollows])
 
-  // ── Date range ──────────────────────────────────────────────────────────────
+  // ── Parse Page (alcance e impressões diários) ───────────────────────────────
+  const pageDays = useMemo<FbPageDay[]>(() => {
+    if (!fbPage?.data?.values || fbPage.data.values.length < 2) return []
+    const [headers, ...rows] = fbPage.data.values
+    const idx = (col: string) => headers.indexOf(col)
+    return rows
+      .map((r: string[]) => ({
+        date:             r[idx("Day")] || "",
+        totalReach:       parseN(r[idx("Total Reach (Unique)")]),
+        totalImpressions: parseN(r[idx("Total Impressions of your posts")]),
+        totalVideoViews:  parseN(r[idx("Total Video Views")]),
+      }))
+      .filter((d) => d.date.match(/^\d{4}-\d{2}-\d{2}$/))
+      .sort((a, b) => a.date.localeCompare(b.date))
+  }, [fbPage])
+
+  // ── Date range — baseado em followDays ──────────────────────────────────────
   const allDates = followDays.map((d) => d.date)
-  const minDate = allDates[0] ?? ""
-  const maxDate = allDates[allDates.length - 1] ?? ""
-  const start = dateRange.start || minDate
-  const end = dateRange.end || maxDate
+  const minDate  = allDates[0] ?? ""
+  const maxDate  = allDates[allDates.length - 1] ?? ""
+  const start    = dateRange.start || minDate
+  const end      = dateRange.end   || maxDate
 
   const filteredDays = useMemo(() =>
     followDays.filter((d) => (!start || d.date >= start) && (!end || d.date <= end)),
     [followDays, start, end]
   )
 
+  const filteredPageDays = useMemo(() =>
+    pageDays.filter((d) => (!start || d.date >= start) && (!end || d.date <= end)),
+    [pageDays, start, end]
+  )
+
   // ── Big numbers ─────────────────────────────────────────────────────────────
   const bigNumbers = useMemo(() => {
-    const latest = filteredDays[filteredDays.length - 1]
+    const latest         = filteredDays[filteredDays.length - 1]
     const gainSeguidores = filteredDays.reduce((s, d) => s + d.newFollows - d.newUnfollows, 0)
-    const totalImpressions = allPosts.reduce((s, p) => s + p.organicImpressions, 0)
-    const totalInteractions = allPosts.reduce((s, p) => s + p.totalReactions + p.totalComments + p.totalShares, 0)
-    const totalLikes = allPosts.reduce((s, p) => s + p.totalLikes, 0)
-    const totalComments = allPosts.reduce((s, p) => s + p.totalComments, 0)
-    const totalShares = allPosts.reduce((s, p) => s + p.totalShares, 0)
-    const totalReactions = allPosts.reduce((s, p) => s + p.totalReactions, 0)
-    const avgEngagement = allPosts.length > 0
-      ? allPosts.reduce((s, p) => s + p.engagementRate, 0) / allPosts.length
+    const totalReach        = filteredPageDays.reduce((s, d) => s + d.totalReach, 0)
+    const totalImpressions  = filteredPageDays.reduce((s, d) => s + d.totalImpressions, 0)
+    const totalVideoViews   = filteredPageDays.reduce((s, d) => s + d.totalVideoViews, 0)
+    const totalReactions    = allPosts.reduce((s, p) => s + p.totalReactions, 0)
+    const totalLikes        = allPosts.reduce((s, p) => s + p.totalLikes, 0)
+    const totalComments     = allPosts.reduce((s, p) => s + p.totalComments, 0)
+    const totalShares       = allPosts.reduce((s, p) => s + p.totalShares, 0)
+    const totalViews30s     = allPosts.reduce((s, p) => s + p.views30s, 0)
+    // Engajamento médio sobre posts que têm alcance (reach) da aba Video Post
+    const postsWithReach  = allPosts.filter((p) => p.reach > 0)
+    const avgEngagement   = postsWithReach.length > 0
+      ? postsWithReach.reduce((s, p) => s + p.engagementRate, 0) / postsWithReach.length
       : 0
     return {
       followers: latest?.totalFollows ?? 0,
       gainSeguidores,
+      totalReach,
       totalImpressions,
-      totalInteractions,
+      totalVideoViews,
+      totalReactions,
       totalLikes,
       totalComments,
       totalShares,
-      totalReactions,
+      totalViews30s,
       avgEngagement,
     }
-  }, [filteredDays, allPosts])
+  }, [filteredDays, filteredPageDays, allPosts])
 
   // ── Trend ───────────────────────────────────────────────────────────────────
   const fbTrend = useMemo(() => {
     if (filteredDays.length < 2) return 0
-    const half = Math.floor(filteredDays.length / 2)
-    const first = filteredDays.slice(0, half).reduce((s, d) => s + d.newFollows, 0)
+    const half   = Math.floor(filteredDays.length / 2)
+    const first  = filteredDays.slice(0, half).reduce((s, d) => s + d.newFollows, 0)
     const second = filteredDays.slice(half).reduce((s, d) => s + d.newFollows, 0)
     if (first === 0) return second > 0 ? 100 : 0
     return ((second - first) / first) * 100
@@ -300,20 +366,32 @@ const OrganicoFacebook: React.FC = () => {
     [filteredDays]
   )
 
-  const impressionsChartSeries = useMemo(() => [
-    { id: "Novos seguidores", color: "#3b82f6", data: filteredDays.map((d) => ({ x: d.date, y: d.newFollows })) },
-    { id: "Seguidores perdidos", color: "#ef4444", data: filteredDays.map((d) => ({ x: d.date, y: d.newUnfollows })) },
-  ], [filteredDays])
+  const reachChartData = useMemo(() =>
+    filteredPageDays.map((d) => ({ x: d.date, y: d.totalReach })),
+    [filteredPageDays]
+  )
+
+  // Postagens por dia via Post Publish Time
+  const postsByDayChartData = useMemo(() => {
+    const byDate = new Map<string, number>()
+    allPosts.forEach((p) => {
+      if (!p.publishDate) return
+      byDate.set(p.publishDate, (byDate.get(p.publishDate) ?? 0) + 1)
+    })
+    return Array.from(byDate.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([x, y]) => ({ x, y }))
+  }, [allPosts])
 
   // ── Day of week activity ─────────────────────────────────────────────────────
   const dowActivity = useMemo(() => {
     const labels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
-    const sums = [0, 0, 0, 0, 0, 0, 0]
+    const sums   = [0, 0, 0, 0, 0, 0, 0]
     const counts = [0, 0, 0, 0, 0, 0, 0]
     filteredDays.forEach((d) => {
       const dow = new Date(d.date + "T12:00:00").getDay()
-      sums[dow] += d.newFollows
-      counts[dow]++
+      sums[dow]   += d.newFollows
+      counts[dow] += 1
     })
     return labels.map((label, i) => ({ label, avg: counts[i] > 0 ? sums[i] / counts[i] : 0 }))
   }, [filteredDays])
@@ -366,16 +444,18 @@ const OrganicoFacebook: React.FC = () => {
       </div>
 
       {/* Big Numbers */}
-      <div className="grid grid-cols-4 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-4 lg:grid-cols-6 gap-3">
         {[
           { label: "Seguidores totais",   value: fmt(bigNumbers.followers),         icon: <Users className="w-4 h-4" /> },
           { label: "Ganho de seguidores", value: fmt(bigNumbers.gainSeguidores),    icon: <TrendingUp className="w-4 h-4" /> },
-          { label: "Visualizações",       value: fmt(bigNumbers.totalImpressions),  icon: <Eye className="w-4 h-4" /> },
-          { label: "Interações totais",   value: fmt(bigNumbers.totalInteractions), icon: <BarChart2 className="w-4 h-4" /> },
+          { label: "Alcance total",       value: fmt(bigNumbers.totalReach),        icon: <BarChart2 className="w-4 h-4" /> },
+          { label: "Impressões",          value: fmt(bigNumbers.totalImpressions),  icon: <Eye className="w-4 h-4" /> },
+          { label: "Video Views",         value: fmt(bigNumbers.totalVideoViews),   icon: <Play className="w-4 h-4" /> },
+          { label: "Reações",             value: fmt(bigNumbers.totalReactions),    icon: <Heart className="w-4 h-4" /> },
           { label: "Curtidas",            value: fmt(bigNumbers.totalLikes),        icon: <Heart className="w-4 h-4" /> },
           { label: "Comentários",         value: fmt(bigNumbers.totalComments),     icon: <MessageCircle className="w-4 h-4" /> },
           { label: "Compartilhamentos",   value: fmt(bigNumbers.totalShares),       icon: <Share2 className="w-4 h-4" /> },
-          { label: "Reações",             value: fmt(bigNumbers.totalReactions),    icon: <Heart className="w-4 h-4" /> },
+          { label: "Views 30s",           value: fmt(bigNumbers.totalViews30s),     icon: <Play className="w-4 h-4" /> },
           { label: "Taxa de engajamento", value: fmtPct(bigNumbers.avgEngagement),  icon: <TrendingUp className="w-4 h-4" /> },
         ].map((c) => (
           <div key={c.label} className="bg-slate-700/80 rounded-2xl px-3 py-3 flex flex-col gap-1 text-white">
@@ -386,7 +466,7 @@ const OrganicoFacebook: React.FC = () => {
       </div>
 
       {/* Gráficos */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div className="card-overlay rounded-2xl shadow-lg p-4">
           <LineChart
             series={[{ id: "Novos seguidores", color: "#3b82f6", data: followerChartData }]}
@@ -395,8 +475,14 @@ const OrganicoFacebook: React.FC = () => {
         </div>
         <div className="card-overlay rounded-2xl shadow-lg p-4">
           <LineChart
-            series={impressionsChartSeries}
-            label="Novos seguidores vs. perdidos"
+            series={[{ id: "Alcance", color: "#6366f1", data: reachChartData }]}
+            label="Alcance por dia"
+          />
+        </div>
+        <div className="card-overlay rounded-2xl shadow-lg p-4">
+          <LineChart
+            series={[{ id: "Postagens", color: "#3b82f6", data: postsByDayChartData }]}
+            label="Postagens por dia"
           />
         </div>
       </div>
@@ -406,7 +492,7 @@ const OrganicoFacebook: React.FC = () => {
 
         {/* Dias mais ativos */}
         <div className="card-overlay rounded-2xl shadow-lg p-4">
-          <p className="text-sm font-bold text-gray-900 mb-3">Atividade por dia da semana</p>
+          <p className="text-sm font-bold text-gray-900 mb-1">Atividade por dia da semana</p>
           <p className="text-[10px] text-gray-400 mb-3">Baseado em novos seguidores por dia</p>
           <div className="flex flex-col gap-2">
             {dowActivity.map((d) => (
@@ -433,14 +519,15 @@ const OrganicoFacebook: React.FC = () => {
               <span className="text-xs text-gray-500">Ordenar por:</span>
               <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as "engagementRate" | "organicImpressions" | "totalLikes" | "totalComments" | "totalShares")}
+                onChange={(e) => setSortBy(e.target.value as SortKey)}
                 className="px-2 py-1 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
               >
-                <option value="engagementRate">Taxa de engajamento</option>
-                <option value="organicImpressions">Visualizações</option>
+                <option value="totalReactions">Reações</option>
                 <option value="totalLikes">Curtidas</option>
                 <option value="totalComments">Comentários</option>
                 <option value="totalShares">Compartilhamentos</option>
+                <option value="reach">Alcance</option>
+                <option value="videoViews">Video Views</option>
               </select>
               <div className="flex items-center gap-1.5 text-xs text-gray-500">
                 <Eye className="w-3.5 h-3.5" />

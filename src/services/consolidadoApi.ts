@@ -169,6 +169,20 @@ export const fetchFacebookFollows = async (): Promise<ConsolidadoData> => {
   return response.data
 }
 
+export const fetchFacebookPage = async (): Promise<ConsolidadoData> => {
+  const response = await consolidadoApi.get(
+    `/google/sheets/${SHEET_ID}/data?sheet=Facebook%20-%20Page&range=A1%3AAZ20000`
+  )
+  return response.data
+}
+
+export const fetchFacebookVideoPost = async (): Promise<ConsolidadoData> => {
+  const response = await consolidadoApi.get(
+    `/google/sheets/${SHEET_ID}/data?sheet=Facebook%20-%20Video%20Post&range=A1%3AAZ20000`
+  )
+  return response.data
+}
+
 export const fetchLinkedInOrgFollowers = async (): Promise<ConsolidadoData> => {
   const response = await consolidadoApi.get(
     `/google/sheets/${SHEET_ID}/data?sheet=Linkedin%20-%20Follower&range=A1%3AAZ20000`
@@ -212,13 +226,15 @@ export const useOrganicData = () => {
   const [igVideo, setIgVideo] = useState<ConsolidadoData | null>(null)
   const [fbPosts, setFbPosts] = useState<ConsolidadoData | null>(null)
   const [fbFollows, setFbFollows] = useState<ConsolidadoData | null>(null)
+  const [fbPage, setFbPage] = useState<ConsolidadoData | null>(null)
+  const [fbVideoPost, setFbVideoPost] = useState<ConsolidadoData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
   const loadData = React.useCallback(async () => {
     try {
       setLoading(true)
-      const [ip, ifo, im, is_, iv, fp, ff] = await Promise.all([
+      const [ip, ifo, im, is_, iv, fp, ff, fbp, fbv] = await Promise.all([
         fetchInstagramPosts(),
         fetchInstagramFollows(),
         fetchInstagramMedia(),
@@ -226,6 +242,8 @@ export const useOrganicData = () => {
         fetchInstagramVideo(),
         fetchFacebookPosts(),
         fetchFacebookFollows(),
+        fetchFacebookPage(),
+        fetchFacebookVideoPost(),
       ])
       setIgPosts(ip)
       setIgFollows(ifo)
@@ -234,6 +252,8 @@ export const useOrganicData = () => {
       setIgVideo(iv)
       setFbPosts(fp)
       setFbFollows(ff)
+      setFbPage(fbp)
+      setFbVideoPost(fbv)
       setError(null)
     } catch (err) {
       setError(err as Error)
@@ -243,7 +263,7 @@ export const useOrganicData = () => {
   }, [])
 
   React.useEffect(() => { loadData() }, [loadData])
-  return { igPosts, igFollows, igMedia, igStory, igVideo, fbPosts, fbFollows, loading, error, refetch: loadData }
+  return { igPosts, igFollows, igMedia, igStory, igVideo, fbPosts, fbFollows, fbPage, fbVideoPost, loading, error, refetch: loadData }
 }
 
 export const useLinkedInOrganicData = () => {
