@@ -1,10 +1,10 @@
 "use client"
 
-import type React from "react"
-import { useState, useMemo } from "react"
+import React, { useState, useMemo, useEffect, useRef } from "react"
 import { Calendar, Filter, ArrowUpDown, DollarSign, Eye, MousePointer, TrendingUp, Target, Search } from "lucide-react"
 import { useGoogleSearchAllData } from "../../services/consolidadoApi"
 import Loading from "../../components/Loading/Loading"
+import cloud from "d3-cloud"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -75,46 +75,74 @@ const fmtPct = (v: number) => `${v.toFixed(2)}%`
 
 // ─── Word Cloud ───────────────────────────────────────────────────────────────
 
-const CLOUD_COLORS = ["#2563eb","#16a34a","#d97706","#dc2626","#7c3aed","#0891b2","#ea580c","#db2777","#65a30d","#0d9488"]
-
 interface WordItem { text: string; value: number }
 
-const WordCloud: React.FC<{ words: WordItem[] }> = ({ words }) => {
-  if (!words.length) return <div className="text-gray-400 text-sm text-center py-8">Sem dados para nuvem de palavras</div>
-  const maxVal = words[0].value
-  const minVal = words[words.length - 1].value
-  const W = 420; const H = 280
-  const cx = W / 2; const cy = H / 2
+const CLOUD_COLORS = ["#2563eb","#16a34a","#d97706","#dc2626","#7c3aed","#0891b2","#ea580c","#db2777","#65a30d","#0d9488"]
 
-  const positioned = words.map((w, i) => {
-    const range = maxVal - minVal
-    const fontSize = range === 0 ? 18 : 12 + ((w.value - minVal) / range) * 34
-    const golden = 2.399963
-    const radius = i === 0 ? 0 : 28 + i * 12 + fontSize * 0.7
-    const angle = i * golden
-    const margin = fontSize * 1.8
-    const x = Math.max(margin, Math.min(W - margin, cx + Math.cos(angle) * radius))
-    const y = Math.max(fontSize, Math.min(H - fontSize, cy + Math.sin(angle) * radius * 0.52))
-    return { ...w, fontSize, x, y }
-  })
+type D3CloudWord = cloud.Word & { origValue: number }
+
+const WordCloudSVG: React.FC<{ words: WordItem[] }> = ({ words }) => {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [dims, setDims] = useState<{ w: number; h: number } | null>(null)
+  const [laid, setLaid] = useState<D3CloudWord[]>([])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect
+      if (width > 0 && height > 0) setDims({ w: Math.floor(width), h: Math.floor(height) })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!words.length || !dims) return
+    const maxVal = Math.max(...words.map((w) => w.value))
+    const minVal = Math.min(...words.map((w) => w.value))
+    const range = maxVal - minVal || 1
+
+    const layout = cloud<D3CloudWord>()
+      .size([dims.w, dims.h])
+      .words(words.map((w) => ({ text: w.text, origValue: w.value })))
+      .padding(4)
+      .rotate(() => (Math.random() > 0.75 ? -90 : 0))
+      .font("Inter, sans-serif")
+      .fontWeight("bold")
+      .fontSize((w: D3CloudWord) => {
+        const norm = (w.origValue - minVal) / range
+        return Math.round(11 + Math.sqrt(norm) * 32)
+      })
+      .on("end", (out: D3CloudWord[]) => { setLaid(out) })
+
+    layout.start()
+    return () => { layout.stop() }
+  }, [words, dims])
 
   return (
-    <div className="border border-gray-100 rounded-xl overflow-hidden"
-      style={{ position: "relative", width: "100%", paddingBottom: `${(H / W) * 100}%` }}>
-      <div style={{ position: "absolute", inset: 0 }}>
-        <svg width="100%" height="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
-          {positioned.map((w, i) => (
-            <text key={`${w.text}-${i}`} x={w.x} y={w.y} textAnchor="middle" dominantBaseline="middle"
-              fill={CLOUD_COLORS[i % CLOUD_COLORS.length]}
-              fontSize={w.fontSize} fontWeight={w.fontSize > 26 ? 700 : w.fontSize > 18 ? 600 : 400}
-              opacity={0.55 + (w.value / maxVal) * 0.45}
-              style={{ cursor: "default", userSelect: "none" }}>
-              <title>{`${w.text}: ${w.value.toLocaleString("pt-BR")} impressões`}</title>
-              {w.text}
-            </text>
-          ))}
+    <div ref={containerRef} style={{ width: "100%", height: "100%" }}>
+      {dims && (
+        <svg width={dims.w} height={dims.h}>
+          <g transform={`translate(${dims.w / 2},${dims.h / 2})`}>
+            {laid.map((w, i) => (
+              <text
+                key={w.text}
+                textAnchor="middle"
+                transform={`translate(${w.x ?? 0},${w.y ?? 0}) rotate(${w.rotate ?? 0})`}
+                fontSize={w.size}
+                fontFamily="Inter, sans-serif"
+                fontWeight="bold"
+                fill={CLOUD_COLORS[i % CLOUD_COLORS.length]}
+                style={{ cursor: "default", userSelect: "none" }}
+              >
+                <title>{w.text}: {w.origValue?.toLocaleString("pt-BR")} impressões</title>
+                {w.text}
+              </text>
+            ))}
+          </g>
         </svg>
-      </div>
+      )}
     </div>
   )
 }
@@ -397,7 +425,15 @@ const GoogleSearch: React.FC = () => {
         <div className="card-overlay rounded-2xl shadow-lg p-4">
           <p className="text-sm font-bold text-gray-800 mb-0.5">Nuvem de Termos de Busca</p>
           <p className="text-xs text-gray-400 mb-3">Termos reais pesquisados · tamanho proporcional às impressões</p>
-          <WordCloud words={cloudWords} />
+          {cloudWords.length > 0 ? (
+            <div style={{ height: 300, width: "100%" }}>
+              <WordCloudSVG words={cloudWords} />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
+              Sem dados para nuvem de palavras
+            </div>
+          )}
           <div className="mt-3 flex items-center justify-between text-[10px] text-gray-400 border-t border-gray-100 pt-2">
             <span>{groupedTerms.length} termos únicos</span>
             <span>{fmt(totals.termImpressions)} impressões · {fmt(totals.termClicks)} cliques</span>
