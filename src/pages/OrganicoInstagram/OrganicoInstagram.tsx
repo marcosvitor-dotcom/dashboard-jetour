@@ -475,15 +475,14 @@ const OrganicoInstagram: React.FC = () => {
     }
   }, [filteredDays, allPosts, allVideos, igMedia])
 
-  // ── Trend ──────────────────────────────────────────────────────────────────
+  // ── Trend: últimos 7 dias vs. 7 dias anteriores (sobre dados completos) ──────
   const igTrend = useMemo(() => {
-    if (filteredDays.length < 2) return 0
-    const half = Math.floor(filteredDays.length / 2)
-    const first = filteredDays.slice(0, half).reduce((s, d) => s + d.newFollowers, 0)
-    const second = filteredDays.slice(half).reduce((s, d) => s + d.newFollowers, 0)
-    if (first === 0) return second > 0 ? 100 : 0
-    return ((second - first) / first) * 100
-  }, [filteredDays])
+    if (followDays.length < 2) return 0
+    const last7  = followDays.slice(-7).reduce((s, d) => s + d.newFollowers, 0)
+    const prev7  = followDays.slice(-14, -7).reduce((s, d) => s + d.newFollowers, 0)
+    if (prev7 === 0) return last7 > 0 ? 100 : 0
+    return ((last7 - prev7) / prev7) * 100
+  }, [followDays])
 
   // ── Chart series ───────────────────────────────────────────────────────────
   const followerChartData = useMemo(() =>
@@ -555,10 +554,13 @@ const OrganicoInstagram: React.FC = () => {
             <h1 className="text-lg font-bold text-gray-900 leading-tight">Orgânico — Instagram</h1>
             <p className="text-xs text-gray-500">Performance orgânica da página Jetour Brasil</p>
           </div>
-          <div className="ml-4 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full"
+          <div
+            title="Comparado à semana anterior (novos seguidores)"
+            className="ml-4 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full cursor-default"
             style={{ backgroundColor: igTrend >= 0 ? "#dcfce7" : "#fee2e2", color: igTrend >= 0 ? "#16a34a" : "#dc2626" }}>
             {igTrend >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
             {Math.abs(igTrend).toFixed(1)}%
+            <span className="text-[10px] opacity-70 font-normal">vs semana ant.</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
