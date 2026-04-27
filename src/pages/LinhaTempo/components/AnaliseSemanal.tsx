@@ -275,6 +275,24 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
         return new Date(2000, mA - 1, dA).getTime() - new Date(2000, mB - 1, dB).getTime()
       })
 
+    // Modo sobreposição: 2+ veículos → período anterior + atual por veículo
+    if (selectedVehicles.length >= 2) {
+      const result: ChartData[] = []
+      for (const vehicle of selectedVehicles) {
+        const prevPoints = sortDays(Object.keys(groupByDay(previousData.filter((i) => i.platform === vehicle))))
+          .map((d) => { const g = groupByDay(previousData.filter((i) => i.platform === vehicle)); return { x: d, y: getValue(g[d]) } })
+          .filter((p) => p.y > 0)
+        if (prevPoints.length) result.push({ id: `${vehicle} — Ant.`, data: prevPoints })
+
+        const currPoints = sortDays(Object.keys(groupByDay(currentData.filter((i) => i.platform === vehicle))))
+          .map((d) => { const g = groupByDay(currentData.filter((i) => i.platform === vehicle)); return { x: d, y: getValue(g[d]) } })
+          .filter((p) => p.y > 0)
+        if (currPoints.length) result.push({ id: `${vehicle} — Atual`, data: currPoints })
+      }
+      return result
+    }
+
+    // Modo padrão: período atual vs anterior
     const currGrouped = groupByDay(currentData)
     const prevGrouped = groupByDay(previousData)
     const result: ChartData[] = []
@@ -290,7 +308,7 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
     if (currPoints.length) result.push({ id: "Período Atual", data: currPoints })
 
     return result
-  }, [selectedMetric, getFilteredDataByPeriod])
+  }, [selectedMetric, selectedVehicles, getFilteredDataByPeriod])
 
   const formatCurrency = (v: number) =>
     v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
@@ -343,6 +361,48 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
     }
     return { type: "linear", min: "auto", max: "auto" }
   }
+
+  const isOverlapMode = selectedVehicles.length >= 2
+
+  // Em modo sobreposição: período anterior = cor com 50% opacidade, atual = cor sólida
+  // A biblioteca nivo não suporta opacidade por série via prop colors, então usamos hex com alpha
+  const hexWithAlpha = (hex: string, alpha: number) => {
+    const h = hex.replace("#", "")
+    const r = parseInt(h.substring(0, 2), 16)
+    const g = parseInt(h.substring(2, 4), 16)
+    const b = parseInt(h.substring(4, 6), 16)
+    return `rgba(${r},${g},${b},${alpha})`
+  }
+
+  const chartColors = isOverlapMode
+    ? selectedVehicles.flatMap((v) => {
+        const base = platformColors[v] || "#6366f1"
+        return [hexWithAlpha(base, 0.45), base]
+      })
+    : ["#f59e0b", "#2563eb"]
+
+  const chartDefs = isOverlapMode
+    ? selectedVehicles.flatMap((v, i) => {
+        const base = platformColors[v] || "#6366f1"
+        return [
+          { id: `gV${i}p`, type: "linearGradient" as const, colors: [{ offset: 0, color: base, opacity: 0.15 }, { offset: 100, color: base, opacity: 0.02 }] },
+          { id: `gV${i}c`, type: "linearGradient" as const, colors: [{ offset: 0, color: base, opacity: 0.3 }, { offset: 100, color: base, opacity: 0.05 }] },
+        ]
+      })
+    : [
+        { id: "gA", type: "linearGradient" as const, colors: [{ offset: 0, color: "#f59e0b", opacity: 0.3 }, { offset: 100, color: "#f59e0b", opacity: 0.05 }] },
+        { id: "gB", type: "linearGradient" as const, colors: [{ offset: 0, color: "#2563eb", opacity: 0.3 }, { offset: 100, color: "#2563eb", opacity: 0.05 }] },
+      ]
+
+  const chartFill = isOverlapMode
+    ? selectedVehicles.flatMap((v, i) => [
+        { match: { id: `${v} — Ant.` }, id: `gV${i}p` },
+        { match: { id: `${v} — Atual` }, id: `gV${i}c` },
+      ])
+    : [
+        { match: { id: "Período Anterior" }, id: "gA" },
+        { match: { id: "Período Atual" }, id: "gB" },
+      ]
 
   const getPreviousPeriodDates = () => {
     if (!dateRange.start || !dateRange.end) return { start: "", end: "" }
@@ -533,11 +593,14 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
         {/* Gráfico */}
         <div className="lg:col-span-3 card-overlay rounded-2xl shadow-lg p-4 flex flex-col h-full">
           <h3 className="text-sm font-bold text-gray-800 mb-2">
-            Comparativo — {selectedMetric === "views" ? "Visualizações" : selectedMetric.toUpperCase()}
+            {isOverlapMode
+              ? `Sobreposição por Veículo — ${selectedMetric === "views" ? "Visualizações" : selectedMetric.toUpperCase()}`
+              : `Comparativo — ${selectedMetric === "views" ? "Visualizações" : selectedMetric.toUpperCase()}`}
           </h3>
           <div className="flex-1 min-h-0">
             {weeklyChartData.length > 0 && weeklyChartData.some((s) => s.data.length > 0) ? (
               <ResponsiveLine
+                key={`${isOverlapMode ? "overlap" : "default"}-${weeklyChartData.length}`}
                 data={weeklyChartData}
                 margin={{ top: 20, right: 30, bottom: 55, left: 75 }}
                 xScale={{ type: "point" }}
@@ -549,7 +612,8 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
                   tickPadding: 8,
                   format: (v) => formatAxisLeft(v),
                 }}
-                colors={["#f59e0b", "#2563eb"]}
+                animate={!isOverlapMode}
+                colors={chartColors}
                 lineWidth={2}
                 pointSize={6}
                 pointColor={{ theme: "background" }}
@@ -557,13 +621,39 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
                 pointBorderColor={{ from: "serieColor" }}
                 enableArea
                 areaOpacity={0.12}
-                defs={[
-                  { id: "gA", type: "linearGradient", colors: [{ offset: 0, color: "#f59e0b", opacity: 0.3 }, { offset: 100, color: "#f59e0b", opacity: 0.05 }] },
-                  { id: "gB", type: "linearGradient", colors: [{ offset: 0, color: "#2563eb", opacity: 0.3 }, { offset: 100, color: "#2563eb", opacity: 0.05 }] },
-                ]}
-                fill={[
-                  { match: { id: "Período Anterior" }, id: "gA" },
-                  { match: { id: "Período Atual" }, id: "gB" },
+                defs={chartDefs}
+                fill={chartFill}
+                layers={[
+                  "grid",
+                  "markers",
+                  "axes",
+                  "areas",
+                  ({ series, lineGenerator, xScale, yScale }: any) => (
+                    <g>
+                      {series.map((serie: any) => {
+                        const isDashed = isOverlapMode && (serie.id as string).endsWith("— Ant.")
+                        return (
+                          <path
+                            key={serie.id}
+                            d={lineGenerator(
+                              serie.data.map((d: any) => ({
+                                x: (xScale as any)(d.data.x),
+                                y: (yScale as any)(d.data.y),
+                              }))
+                            ) || ""}
+                            fill="none"
+                            stroke={serie.color}
+                            strokeWidth={2}
+                            strokeDasharray={isDashed ? "6 3" : undefined}
+                          />
+                        )
+                      })}
+                    </g>
+                  ),
+                  "points",
+                  "slices",
+                  "mesh",
+                  "legends",
                 ]}
                 useMesh
                 enableSlices="x"
