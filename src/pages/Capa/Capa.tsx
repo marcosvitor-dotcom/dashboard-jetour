@@ -14,7 +14,7 @@ import {
   Globe,
   Search,
 } from "lucide-react"
-import { useConsolidadoGeral, parseBrazilianCurrency, useGA4, useGoogleSearchData, useGA4Leads } from "../../services/consolidadoApi"
+import { useConsolidadoGeral, parseBrazilianCurrency, parseBrazilianNumber, useGA4, useGoogleSearchData, useGA4Leads } from "../../services/consolidadoApi"
 import Loading from "../../components/Loading/Loading"
 import CapaAIInsight from "../../components/CapaAIInsight/CapaAIInsight"
 
@@ -111,10 +111,10 @@ const Capa: React.FC = () => {
           if (!d || d < activeStartDate || d > activeEndDate) return
         }
         base.spent += parseBrazilianCurrency(row[spentIdx] || "0")
-        base.impressions += parseFloat(row[impressionsIdx]) || 0
-        base.clicks += parseFloat(row[clicksIdx]) || 0
-        base.videoViews += parseFloat(row[videoViewsIdx]) || 0
-        base.leads += parseFloat(row[leadsIdx]) || 0
+        base.impressions += parseBrazilianNumber(row[impressionsIdx] || "0")
+        base.clicks += parseBrazilianNumber(row[clicksIdx] || "0")
+        base.videoViews += parseBrazilianNumber(row[videoViewsIdx] || "0")
+        base.leads += parseBrazilianNumber(row[leadsIdx] || "0")
       })
     }
 
@@ -157,7 +157,7 @@ const Capa: React.FC = () => {
           const d = parseRowDate(row[dateIdx])
           if (!d || d < activeStartDate || d > activeEndDate) return
         }
-        const leads = parseFloat(row[leadsIdx] || "0") || 0
+        const leads = parseBrazilianNumber(row[leadsIdx] || "0")
         if (leads > 0 && row[veiculoIdx]) trackedPlatforms.add(row[veiculoIdx].trim().toLowerCase())
       })
     }
@@ -290,11 +290,11 @@ const Capa: React.FC = () => {
       const key = row[dateIdx]
       if (!map.has(key)) map.set(key, { date: key, impressions: 0, clicks: 0, videoViews: 0, spent: 0, leads: 0, sessions: 0 })
       const m = map.get(key)!
-      m.impressions += parseFloat(row[impressionsIdx]) || 0
-      m.clicks += parseFloat(row[clicksIdx]) || 0
-      m.videoViews += parseFloat(row[videoViewsIdx]) || 0
+      m.impressions += parseBrazilianNumber(row[impressionsIdx] || "0")
+      m.clicks += parseBrazilianNumber(row[clicksIdx] || "0")
+      m.videoViews += parseBrazilianNumber(row[videoViewsIdx] || "0")
       m.spent += parseBrazilianCurrency(row[spentIdx] || "0")
-      m.leads += parseFloat(row[leadsIdx]) || 0
+      m.leads += parseBrazilianNumber(row[leadsIdx] || "0")
     })
 
     // Injeta sessões do GA4 em cada dia
@@ -449,10 +449,10 @@ const Capa: React.FC = () => {
       d.setHours(0, 0, 0, 0)
       if (d < prevStart || d > prevEnd) return
       totals.spent += parseBrazilianCurrency(row[spentIdx] || "0")
-      totals.impressions += parseFloat(row[impressionsIdx]) || 0
-      totals.clicks += parseFloat(row[clicksIdx]) || 0
-      totals.videoViews += parseFloat(row[videoViewsIdx]) || 0
-      totals.leads += parseFloat(row[leadsIdx]) || 0
+      totals.impressions += parseBrazilianNumber(row[impressionsIdx] || "0")
+      totals.clicks += parseBrazilianNumber(row[clicksIdx] || "0")
+      totals.videoViews += parseBrazilianNumber(row[videoViewsIdx] || "0")
+      totals.leads += parseBrazilianNumber(row[leadsIdx] || "0")
     })
 
     // Inclui Google Search no período anterior também
@@ -512,7 +512,7 @@ const Capa: React.FC = () => {
       if (!d2) return acc
       d2.setHours(0,0,0,0)
       if (d2 < start || d2 > yesterday) return acc
-      return acc + (parseFloat(row[leadsIdx]) || 0)
+      return acc + parseBrazilianNumber(row[leadsIdx] || "0")
     }, 0)
     console.log("[veiculos-debug] Total leads na janela (sem filtro veículo):", totalLeadsRaw)
 
@@ -540,12 +540,12 @@ const Capa: React.FC = () => {
       rowsInWindow++
       const rawVeiculo = (row[veicIdx] || "").trim()
       const v = rawVeiculo ? normalizeVeiculo(rawVeiculo) : "Outros"
-      const leads = parseFloat(row[leadsIdx]) || 0
+      const leads = parseBrazilianNumber(row[leadsIdx] || "0")
       totalLeadsInWindow += leads
       if (!map.has(v)) map.set(v, { impressions: 0, clicks: 0, spent: 0, leads: 0 })
       const m = map.get(v)!
-      m.impressions += parseFloat(row[impIdx])    || 0
-      m.clicks      += parseFloat(row[clicksIdx]) || 0
+      m.impressions += parseBrazilianNumber(row[impIdx]    || "0")
+      m.clicks      += parseBrazilianNumber(row[clicksIdx] || "0")
       m.spent       += parseBrazilianCurrency(row[spentIdx] || "0")
       m.leads       += leads
     })
@@ -560,7 +560,7 @@ const Capa: React.FC = () => {
       const d = parseRowDate(row[dateIdx])
       if (!d) return false
       d.setHours(0,0,0,0)
-      return d >= start && d <= yesterday && (parseFloat(row[leadsIdx]) || 0) > 0
+      return d >= start && d <= yesterday && parseBrazilianNumber(row[leadsIdx] || "0") > 0
     }).slice(0, 10)
     console.log("[veiculos-debug] Amostra de linhas com leads (primeiras 10):", sampleLeadRows.map((row) => ({
       date: row[dateIdx],

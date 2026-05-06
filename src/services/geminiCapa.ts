@@ -1,5 +1,11 @@
 const API_KEY = process.env.REACT_APP_GEMINI_AI
-const MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-1.5-flash"]
+const MODELS = [
+  "gemini-2.5-flash",       // 1K RPM, 10K RPD
+  "gemini-2.5-pro",         // 150 RPM, 1K RPD
+  "gemini-2.5-flash-lite",  // 4K RPM, ilimitado RPD
+  "gemini-2.0-flash",       // 2K RPM, ilimitado RPD
+  "gemini-2.0-flash-lite",  // 4K RPM, ilimitado RPD
+]
 
 if (!API_KEY) {
   console.error("[geminiCapa] REACT_APP_GEMINI_AI não encontrada. Reinicie o servidor após adicionar ao .env")
@@ -103,12 +109,9 @@ const callGemini = async (prompt: string): Promise<string> => {
       })
       if (!res.ok) {
         const status = res.status
-        if (status === 429 || status === 503 || status === 500) {
-          lastError = new Error(`Modelo ${model} indisponível (${status})`)
-          if (i < MODELS.length - 1) await new Promise((r) => setTimeout(r, 1500))
-          continue
-        }
-        throw new Error(`Erro fatal Gemini (${status})`)
+        lastError = new Error(`Modelo ${model} indisponível (${status})`)
+        if (i < MODELS.length - 1) await new Promise((r) => setTimeout(r, 1500))
+        continue
       }
       const json = await res.json()
       const text = json?.candidates?.[0]?.content?.parts?.[0]?.text

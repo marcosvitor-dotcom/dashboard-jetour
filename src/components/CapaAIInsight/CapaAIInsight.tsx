@@ -58,6 +58,24 @@ const Section = ({
   </div>
 )
 
+const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hora
+
+const loadCache = (key: string): CapaInsightResult | null => {
+  try {
+    const raw = localStorage.getItem(`capaInsight_${key}`)
+    if (!raw) return null
+    const { ts, data } = JSON.parse(raw)
+    if (Date.now() - ts > CACHE_TTL_MS) return null
+    return data
+  } catch { return null }
+}
+
+const saveCache = (key: string, data: CapaInsightResult) => {
+  try {
+    localStorage.setItem(`capaInsight_${key}`, JSON.stringify({ ts: Date.now(), data }))
+  } catch {}
+}
+
 const CapaAIInsight = ({ last7Totals, prev7Totals, generalTotals, vehicleData, sessionsData }: Props) => {
   const [result, setResult] = useState<CapaInsightResult>(EMPTY)
   const [loading, setLoading] = useState(false)
@@ -67,14 +85,26 @@ const CapaAIInsight = ({ last7Totals, prev7Totals, generalTotals, vehicleData, s
   const lastKeyRef = useRef<string>("")
   const generatingRef = useRef(false)
 
-  const generate = () => {
+  const generate = (forceRefresh = false) => {
     if (generatingRef.current) return
+
+    if (!forceRefresh) {
+      const cached = loadCache(dataKey)
+      if (cached) {
+        setResult(cached)
+        return
+      }
+    }
+
     generatingRef.current = true
     setLoading(true)
     setError(null)
 
     generateCapaInsight(last7Totals, prev7Totals, generalTotals, vehicleData, sessionsData)
-      .then((r) => setResult(r))
+      .then((r) => {
+        setResult(r)
+        saveCache(dataKey, r)
+      })
       .catch((err) => setError(err.message))
       .finally(() => {
         setLoading(false)
@@ -110,7 +140,7 @@ const CapaAIInsight = ({ last7Totals, prev7Totals, generalTotals, vehicleData, s
 
         {!loading && (
           <button
-            onClick={() => { lastKeyRef.current = ""; generate() }}
+            onClick={() => { lastKeyRef.current = ""; generate(true) }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-violet-600 hover:text-violet-700 hover:bg-violet-50 rounded-lg transition-colors"
             title="Gerar nova leitura"
           >

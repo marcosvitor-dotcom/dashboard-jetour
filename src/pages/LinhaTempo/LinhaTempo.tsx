@@ -396,11 +396,7 @@ const LinhaTempo: React.FC = () => {
   const formatCurrency = (v: number) =>
     v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 
-  const formatNumber = (v: number) => {
-    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(".", ",")} mi`
-    if (v >= 1_000) return `${(v / 1_000).toFixed(1).replace(".", ",")} mil`
-    return v.toLocaleString("pt-BR")
-  }
+  const formatNumber = (v: number) => v.toLocaleString("pt-BR")
 
   const formatChartValue = (value: number): string => {
     if (["totalSpent", "cpm", "cpc"].includes(selectedMetric)) return formatCurrency(value)
