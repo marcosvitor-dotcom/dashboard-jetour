@@ -3,6 +3,7 @@
 import type React from "react"
 import { useMemo, useState, useRef } from "react"
 import { ResponsiveLine } from "@nivo/line"
+import { useIsMobile } from "../../hooks/useIsMobile"
 import {
   DollarSign,
   Eye,
@@ -20,6 +21,7 @@ import CapaAIInsight from "../../components/CapaAIInsight/CapaAIInsight"
 type MetricType = "impressions" | "clicks" | "videoViews" | "spent" | "leads" | "sessions"
 
 const Capa: React.FC = () => {
+  const isMobile = useIsMobile()
   const {
     campaigns,
     last7Days,
@@ -503,6 +505,16 @@ const Capa: React.FC = () => {
     console.log("[veiculos-debug] Headers:", headers.join(" | "))
     console.log("[veiculos-debug] Total de linhas na planilha:", rows.length)
     console.log("[veiculos-debug] leadsIdx:", leadsIdx, "| veicIdx:", veicIdx, "| dateIdx:", dateIdx)
+    // Contar leads totais na janela sem filtro de veículo
+    const totalLeadsRaw = rows.reduce((acc, row) => {
+      if (!row[dateIdx]) return acc
+      const d2 = parseRowDate(row[dateIdx])
+      if (!d2) return acc
+      d2.setHours(0,0,0,0)
+      if (d2 < start || d2 > yesterday) return acc
+      return acc + (parseFloat(row[leadsIdx]) || 0)
+    }, 0)
+    console.log("[veiculos-debug] Total leads na janela (sem filtro veículo):", totalLeadsRaw)
 
     // Agrupa plataformas do ecossistema Meta sob "Meta"
     const normalizeVeiculo = (raw: string): string => {
@@ -520,13 +532,14 @@ const Capa: React.FC = () => {
     let totalLeadsInWindow = 0
 
     rows.forEach((row) => {
-      if (!row[dateIdx] || !row[veicIdx]) return
+      if (!row[dateIdx]) return
       const d = parseRowDate(row[dateIdx])
       if (!d) return
       d.setHours(0,0,0,0)
       if (d < start || d > yesterday) return
       rowsInWindow++
-      const v = normalizeVeiculo(row[veicIdx])
+      const rawVeiculo = (row[veicIdx] || "").trim()
+      const v = rawVeiculo ? normalizeVeiculo(rawVeiculo) : "Outros"
       const leads = parseFloat(row[leadsIdx]) || 0
       totalLeadsInWindow += leads
       if (!map.has(v)) map.set(v, { impressions: 0, clicks: 0, spent: 0, leads: 0 })
@@ -801,7 +814,7 @@ const Capa: React.FC = () => {
     <div className="h-full flex flex-col space-y-4 overflow-auto">
 
       {/* ── Hero (wrapper com relative para o dropdown não ser cortado) ──── */}
-      <div className="relative rounded-2xl shadow-2xl h-44">
+      <div className="relative rounded-2xl shadow-2xl h-32 md:h-44">
         {/* vídeo com overflow-hidden isolado */}
         <div className="absolute inset-0 overflow-hidden rounded-2xl">
           <video
@@ -917,7 +930,7 @@ const Capa: React.FC = () => {
       </div>
 
       {/* ── Big Numbers — Total Geral ─────────────────────────────────────── */}
-      <div className="grid grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
           { label: "Investimento Total", value: formatCurrency(totaisGerais.spent),       icon: <DollarSign className="w-4 h-4" /> },
           { label: "Impressões",         value: formatNumber(totaisGerais.impressions),    icon: <Eye className="w-4 h-4" /> },
@@ -978,7 +991,7 @@ const Capa: React.FC = () => {
           </div>
 
           {/* Big numbers 7 dias — linha única */}
-          <div className="grid grid-cols-6 gap-2 mb-3">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
             {[
               { label: "Investimento", value: formatCurrency(last7Totals.spent) },
               { label: "Impressões",   value: formatNumber(last7Totals.impressions) },
@@ -999,7 +1012,7 @@ const Capa: React.FC = () => {
             {chartData.length > 0 ? (
               <ResponsiveLine
                 data={chartData}
-                margin={{ top: 10, right: 20, bottom: 40, left: 60 }}
+                margin={{ top: 10, right: isMobile ? 8 : 20, bottom: isMobile ? 50 : 40, left: isMobile ? 42 : 60 }}
                 xScale={{ type: "point" }}
                 yScale={{ type: "linear", min: "auto", max: "auto" }}
                 curve="monotoneX"
@@ -1134,14 +1147,16 @@ const Capa: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Leitura IA — largura total ──────────────────────────────────── */}
-      <CapaAIInsight
-        last7Totals={last7Totals}
-        prev7Totals={prev7Totals}
-        generalTotals={totaisGerais}
-        vehicleData={last7VehicleData}
-        sessionsData={sessionsInsightData}
-      />
+      {/* ── Leitura IA — oculta temporariamente ─────────────────────────── */}
+      {false && (
+        <CapaAIInsight
+          last7Totals={last7Totals}
+          prev7Totals={prev7Totals}
+          generalTotals={totaisGerais}
+          vehicleData={last7VehicleData}
+          sessionsData={sessionsInsightData}
+        />
+      )}
     </div>
   )
 }

@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState } from "react"
 import { Link, useLocation } from "react-router-dom"
-import { Home, Clock, Eye, TrendingUp, BarChart3, BookOpenText, ChevronDown, Share2, CalendarDays, Radio, Leaf } from "lucide-react"
+import { Home, Clock, Eye, TrendingUp, BarChart3, BookOpenText, ChevronDown, Share2, CalendarDays, Radio, Leaf, X } from "lucide-react"
 
 interface MenuItem {
   id: string
@@ -103,12 +103,7 @@ const menuStructure: MenuItemOrGroup[] = [
         label: "Orgânico - LinkedIn",
         path: "/organico-linkedin",
         icon: (
-          <svg
-            className="w-5 h-5"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 50 50"
-            fill="currentColor"
-          >
+          <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50" fill="currentColor">
             <path d="M41,4H9C6.24,4,4,6.24,4,9v32c0,2.76,2.24,5,5,5h32c2.76,0,5-2.24,5-5V9C46,6.24,43.76,4,41,4z M17,20v19h-6V20H17z M11,14.47c0-1.4,1.2-2.47,3-2.47s2.93,1.07,3,2.47c0,1.4-1.12,2.53-3,2.53C12.2,17,11,15.87,11,14.47z M39,39h-6c0,0,0-9.26,0-10 c0-2-1-4-3.5-4.04h-0.08C27,24.96,26,27.02,26,29c0,0.91,0,10,0,10h-6V20h6v2.56c0,0,1.93-2.56,5.81-2.56 c3.97,0,7.19,2.73,7.19,8.26V39z"/>
           </svg>
         ),
@@ -129,28 +124,39 @@ const menuStructure: MenuItemOrGroup[] = [
   },
 ]
 
-const Sidebar: React.FC = () => {
-  const [isExpanded, setIsExpanded] = useState(false)
+interface SidebarProps {
+  isOpen: boolean
+  onClose: () => void
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
+  // Estado de hover só importa no desktop
+  const [isHovered, setIsHovered] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     "redes-sociais": false,
     "organico": false,
   })
   const location = useLocation()
 
+  // No desktop: expandido quando hovering. No mobile: sempre expandido quando offcanvas aberto.
+  const showLabels = isHovered || isOpen
+
   const toggleGroup = (groupId: string) => {
-    setExpandedGroups(prev => ({
-      ...prev,
-      [groupId]: !prev[groupId]
-    }))
+    setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }))
+  }
+
+  const handleNavClick = () => {
+    // Fecha o offcanvas ao navegar (só tem efeito no mobile)
+    onClose()
   }
 
   const renderMenuItem = (item: MenuItem, isSubItem = false) => {
     const isActive = location.pathname === item.path
-
     return (
       <li key={item.id}>
         <Link
           to={item.path}
+          onClick={handleNavClick}
           className={`flex items-center py-3 text-sm transition-colors duration-200 ${
             isSubItem ? "pl-12 pr-4" : "px-4"
           } ${
@@ -160,7 +166,9 @@ const Sidebar: React.FC = () => {
           }`}
         >
           <div className="flex-shrink-0">{item.icon}</div>
-          {isExpanded && <span className="ml-3 whitespace-nowrap overflow-hidden">{item.label}</span>}
+          {showLabels && (
+            <span className="ml-3 whitespace-nowrap overflow-hidden">{item.label}</span>
+          )}
         </Link>
       </li>
     )
@@ -169,7 +177,6 @@ const Sidebar: React.FC = () => {
   const renderGroup = (group: MenuGroup) => {
     const isGroupExpanded = expandedGroups[group.id]
     const hasActiveItem = group.items.some(item => location.pathname === item.path)
-
     return (
       <li key={group.id}>
         <button
@@ -181,18 +188,16 @@ const Sidebar: React.FC = () => {
           }`}
         >
           <div className="flex-shrink-0">{group.icon}</div>
-          {isExpanded && (
+          {showLabels && (
             <>
               <span className="ml-3 whitespace-nowrap overflow-hidden flex-1 text-left">{group.label}</span>
               <ChevronDown
-                className={`w-4 h-4 transition-transform duration-200 ${
-                  isGroupExpanded ? "rotate-180" : ""
-                }`}
+                className={`w-4 h-4 transition-transform duration-200 ${isGroupExpanded ? "rotate-180" : ""}`}
               />
             </>
           )}
         </button>
-        {isExpanded && isGroupExpanded && (
+        {showLabels && isGroupExpanded && (
           <ul className="bg-gray-50">
             {group.items.map(item => renderMenuItem(item, true))}
           </ul>
@@ -202,46 +207,70 @@ const Sidebar: React.FC = () => {
   }
 
   return (
-    <div
-      className={`fixed left-0 top-0 h-full bg-white shadow-lg transition-all duration-300 z-50 ${
-        isExpanded ? "w-64" : "w-16"
-      }`}
-      onMouseEnter={() => setIsExpanded(true)}
-      onMouseLeave={() => setIsExpanded(false)}
-    >
-      <div className="flex flex-col h-full">
+    <>
+      {/* ── DESKTOP: sidebar fixa com hover-expand (md+) ── */}
+      <div
+        className={`hidden md:flex fixed left-0 top-0 h-full bg-white shadow-lg transition-all duration-300 z-50 flex-col ${
+          isHovered ? "w-64" : "w-16"
+        }`}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
         {/* Header */}
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center">
-              <img
-                src="/images/LOGO_JETOUR.png"
-                alt="Logo Jetour"
-                className="w-full h-full object-contain"
-              />
+            <div className="w-8 h-8 rounded-lg flex-shrink-0">
+              <img src="/images/LOGO_JETOUR.png" alt="Logo Jetour" className="w-full h-full object-contain" />
             </div>
-            {isExpanded && (
-              <span className="ml-3 font-semibold text-gray-800 whitespace-nowrap">Dashboard <br />Jetour</span>
+            {isHovered && (
+              <span className="ml-3 font-semibold text-gray-800 whitespace-nowrap">
+                Dashboard <br />Jetour
+              </span>
             )}
           </div>
         </div>
 
-
-        {/* Menu Items */}
         <nav className="flex-1 py-4 overflow-y-auto">
           <ul className="space-y-1">
-            {menuStructure.map((item) => {
-              if (isGroup(item)) {
-                return renderGroup(item)
-              } else {
-                return renderMenuItem(item)
-              }
-            })}
+            {menuStructure.map((item) =>
+              isGroup(item) ? renderGroup(item) : renderMenuItem(item)
+            )}
           </ul>
         </nav>
-
       </div>
-    </div>
+
+      {/* ── MOBILE: offcanvas (< md) ── */}
+      <div
+        className={`md:hidden fixed top-0 left-0 h-full w-72 bg-white shadow-xl z-50 flex flex-col transition-transform duration-300 ${
+          isOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        {/* Header com botão fechar */}
+        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 flex-shrink-0">
+              <img src="/images/LOGO_JETOUR.png" alt="Logo Jetour" className="w-full h-full object-contain" />
+            </div>
+            <span className="font-semibold text-gray-800">Dashboard Jetour</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
+            aria-label="Fechar menu"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <nav className="flex-1 py-4 overflow-y-auto">
+          <ul className="space-y-1">
+            {menuStructure.map((item) =>
+              isGroup(item) ? renderGroup(item) : renderMenuItem(item)
+            )}
+          </ul>
+        </nav>
+      </div>
+    </>
   )
 }
 
