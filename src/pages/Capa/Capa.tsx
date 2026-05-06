@@ -669,12 +669,7 @@ const Capa: React.FC = () => {
   const formatCurrency = (v: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v)
 
-  // Abreviações no padrão BR: mil / mi (em vez de K / M)
-  const formatNumber = (v: number) => {
-    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(".", ",")} mi`
-    if (v >= 1_000) return `${(v / 1_000).toFixed(1).replace(".", ",")} mil`
-    return v.toLocaleString("pt-BR")
-  }
+  const formatNumber = (v: number) => v.toLocaleString("pt-BR")
 
   // Formata o valor do eixo Y do gráfico conforme a métrica selecionada
   const formatChartTick = (v: number | string): string => {
