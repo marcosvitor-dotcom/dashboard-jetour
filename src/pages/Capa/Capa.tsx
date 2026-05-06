@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import { useConsolidadoGeral, parseBrazilianCurrency, useGA4, useGoogleSearchData, useGA4Leads } from "../../services/consolidadoApi"
 import Loading from "../../components/Loading/Loading"
+import CapaAIInsight from "../../components/CapaAIInsight/CapaAIInsight"
 
 type MetricType = "impressions" | "clicks" | "videoViews" | "spent" | "leads" | "sessions"
 
@@ -415,6 +416,214 @@ const Capa: React.FC = () => {
     const cpl = totals.leads > 0 ? totals.spent / totals.leads : 0
     return { ...totals, cpm, ctr, cpl }
   }, [filteredLast7DaysWithGS])
+
+  // ── Totais dos 7 dias ANTERIORES (para comparação IA) ────────────────────
+  const prev7Totals = useMemo(() => {
+    if (!consolidadoData?.success || !consolidadoData?.data?.values) {
+      return { spent: 0, impressions: 0, clicks: 0, videoViews: 0, leads: 0, cpm: 0, ctr: 0, cpl: 0 }
+    }
+
+    const headers = consolidadoData.data.values[0]
+    const rows = consolidadoData.data.values.slice(1)
+    const dateIdx = headers.indexOf("Date")
+    const spentIdx = headers.indexOf("Total spent")
+    const impressionsIdx = headers.indexOf("Impressions")
+    const clicksIdx = headers.indexOf("Clicks")
+    const videoViewsIdx = headers.indexOf("Video views")
+    const leadsIdx = headers.indexOf("Leads")
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const prevEnd = new Date(today)
+    prevEnd.setDate(today.getDate() - 8) // dia -8
+    const prevStart = new Date(today)
+    prevStart.setDate(today.getDate() - 14) // dia -14
+
+    const totals = { spent: 0, impressions: 0, clicks: 0, videoViews: 0, leads: 0 }
+    rows.forEach((row) => {
+      if (!row[dateIdx]) return
+      const d = parseRowDate(row[dateIdx])
+      if (!d) return
+      d.setHours(0, 0, 0, 0)
+      if (d < prevStart || d > prevEnd) return
+      totals.spent += parseBrazilianCurrency(row[spentIdx] || "0")
+      totals.impressions += parseFloat(row[impressionsIdx]) || 0
+      totals.clicks += parseFloat(row[clicksIdx]) || 0
+      totals.videoViews += parseFloat(row[videoViewsIdx]) || 0
+      totals.leads += parseFloat(row[leadsIdx]) || 0
+    })
+
+    // Inclui Google Search no período anterior também
+    if (searchData?.success && searchData?.data?.values && searchData.data.values.length > 1) {
+      const sHeaders = searchData.data.values[0]
+      const sRows = searchData.data.values.slice(1)
+      const dayIdx = sHeaders.indexOf("Day")
+      const costIdx = sHeaders.indexOf("Cost (Spend)")
+      const sClicksIdx = sHeaders.indexOf("Clicks")
+      const impIdx = sHeaders.indexOf("Impressions")
+      const parseN = (v: string) => parseFloat((v || "").replace(/[R$\s.]/g, "").replace(",", ".")) || 0
+      const parseI = (v: string) => parseInt((v || "").replace(/[.\s]/g, "").replace(",", "")) || 0
+      sRows.forEach((row: string[]) => {
+        if (!row[dayIdx]) return
+        const d = parseRowDate(row[dayIdx])
+        if (!d) return
+        d.setHours(0, 0, 0, 0)
+        if (d < prevStart || d > prevEnd) return
+        totals.spent += parseN(row[costIdx] || "0")
+        totals.clicks += parseI(row[sClicksIdx] || "0")
+        totals.impressions += parseI(row[impIdx] || "0")
+      })
+    }
+
+    const cpm = totals.impressions > 0 ? (totals.spent / totals.impressions) * 1000 : 0
+    const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0
+    const cpl = totals.leads > 0 ? totals.spent / totals.leads : 0
+    return { ...totals, cpm, ctr, cpl }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consolidadoData, searchData])
+
+  // ── Veículos nos últimos 7 dias (para IA) ────────────────────────────────
+  const last7VehicleData = useMemo(() => {
+    if (!consolidadoData?.success || !consolidadoData?.data?.values) return []
+
+    const headers = consolidadoData.data.values[0]
+    const rows = consolidadoData.data.values.slice(1)
+    const dateIdx   = headers.indexOf("Date")
+    const veicIdx   = headers.indexOf("Veículo")
+    const spentIdx  = headers.indexOf("Total spent")
+    const impIdx    = headers.indexOf("Impressions")
+    const clicksIdx = headers.indexOf("Clicks")
+    const leadsIdx  = headers.indexOf("Leads")
+
+    // Mesma janela usada em filteredLast7DaysWithGS: termina em ontem
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1); yesterday.setHours(0,0,0,0)
+    const start     = new Date(yesterday); start.setDate(yesterday.getDate() - 6)
+
+    console.log("[veiculos-debug] Janela:", start.toLocaleDateString("pt-BR"), "→", yesterday.toLocaleDateString("pt-BR"))
+    console.log("[veiculos-debug] Headers:", headers.join(" | "))
+    console.log("[veiculos-debug] Total de linhas na planilha:", rows.length)
+    console.log("[veiculos-debug] leadsIdx:", leadsIdx, "| veicIdx:", veicIdx, "| dateIdx:", dateIdx)
+
+    // Agrupa plataformas do ecossistema Meta sob "Meta"
+    const normalizeVeiculo = (raw: string): string => {
+      const l = raw.toLowerCase()
+      if (["facebook", "instagram", "audience network", "messenger", "threads", "unknown", "meta"].some((s) => l.includes(s))) return "Meta"
+      if (l.includes("tiktok")) return "TikTok"
+      if (l.includes("linkedin")) return "LinkedIn"
+      if (l.includes("kwai")) return "Kwai"
+      if (l.includes("google") || l.includes("youtube") || l.includes("pmax") || l.includes("search")) return "Google"
+      return raw.trim()
+    }
+
+    const map = new Map<string, { impressions: number; clicks: number; spent: number; leads: number }>()
+    let rowsInWindow = 0
+    let totalLeadsInWindow = 0
+
+    rows.forEach((row) => {
+      if (!row[dateIdx] || !row[veicIdx]) return
+      const d = parseRowDate(row[dateIdx])
+      if (!d) return
+      d.setHours(0,0,0,0)
+      if (d < start || d > yesterday) return
+      rowsInWindow++
+      const v = normalizeVeiculo(row[veicIdx])
+      const leads = parseFloat(row[leadsIdx]) || 0
+      totalLeadsInWindow += leads
+      if (!map.has(v)) map.set(v, { impressions: 0, clicks: 0, spent: 0, leads: 0 })
+      const m = map.get(v)!
+      m.impressions += parseFloat(row[impIdx])    || 0
+      m.clicks      += parseFloat(row[clicksIdx]) || 0
+      m.spent       += parseBrazilianCurrency(row[spentIdx] || "0")
+      m.leads       += leads
+    })
+
+    console.log("[veiculos-debug] Linhas na janela:", rowsInWindow, "| Total leads acumulados:", totalLeadsInWindow)
+    console.log("[veiculos-debug] Veículos encontrados:", Object.fromEntries(
+      Array.from(map.entries()).map(([k, v]) => [k, { leads: v.leads, imp: Math.round(v.impressions) }])
+    ))
+
+    // Amostra de linhas com leads > 0 para ver datas e veículos reais
+    const sampleLeadRows = rows.filter((row) => {
+      const d = parseRowDate(row[dateIdx])
+      if (!d) return false
+      d.setHours(0,0,0,0)
+      return d >= start && d <= yesterday && (parseFloat(row[leadsIdx]) || 0) > 0
+    }).slice(0, 10)
+    console.log("[veiculos-debug] Amostra de linhas com leads (primeiras 10):", sampleLeadRows.map((row) => ({
+      date: row[dateIdx],
+      veiculo: row[veicIdx],
+      leads: row[leadsIdx],
+      impressions: row[impIdx],
+    })))
+
+    // Soma Google Search (aba separada) ao grupo Google
+    if (searchData?.success && searchData?.data?.values && searchData.data.values.length > 1) {
+      const sh = searchData.data.values[0]
+      const sr = searchData.data.values.slice(1)
+      const sDayIdx    = sh.indexOf("Day")
+      const sCostIdx   = sh.indexOf("Cost (Spend)")
+      const sClicksIdx = sh.indexOf("Clicks")
+      const sImpIdx    = sh.indexOf("Impressions")
+      const parseN = (v: string) => parseFloat((v || "").replace(/[R$\s.]/g, "").replace(",", ".")) || 0
+      const parseI = (v: string) => parseInt((v || "").replace(/[.\s]/g, "").replace(",", "")) || 0
+      sr.forEach((row: string[]) => {
+        if (!row[sDayIdx]) return
+        const d = parseRowDate(row[sDayIdx])
+        if (!d) return
+        d.setHours(0,0,0,0)
+        if (d < start || d > yesterday) return
+        if (!map.has("Google")) map.set("Google", { impressions: 0, clicks: 0, spent: 0, leads: 0 })
+        const m = map.get("Google")!
+        m.spent       += parseN(row[sCostIdx]   || "0")
+        m.clicks      += parseI(row[sClicksIdx] || "0")
+        m.impressions += parseI(row[sImpIdx]    || "0")
+      })
+    }
+
+    return Array.from(map.entries())
+      .map(([name, v]) => ({
+        name,
+        impressions: v.impressions,
+        clicks: v.clicks,
+        spent: v.spent,
+        leads: v.leads,
+        ctr: v.impressions > 0 ? (v.clicks / v.impressions) * 100 : 0,
+        cpm: v.impressions > 0 ? (v.spent  / v.impressions) * 1000 : 0,
+      }))
+      .sort((a, b) => b.impressions - a.impressions)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consolidadoData, searchData])
+
+  // ── Sessões GA4 últimos 7 dias vs 7 anteriores (para IA) ─────────────────
+  const sessionsInsightData = useMemo(() => {
+    const calcWindow = (start: Date, end: Date): number => {
+      if (!ga4Data?.success || !ga4Data?.data?.values || ga4Data.data.values.length < 2) return 0
+      const headers = ga4Data.data.values[0]
+      const sessIdx = headers.indexOf("Sessions")
+      const dateIdx = headers.indexOf("Date")
+      if (sessIdx === -1) return 0
+      return ga4Data.data.values.slice(1).reduce((acc, row) => {
+        if (!row[dateIdx]) return acc
+        const parts = (row[dateIdx] as string).split("/")
+        const d = parts.length === 3
+          ? new Date(+parts[2], +parts[1] - 1, +parts[0])
+          : new Date(row[dateIdx])
+        if (isNaN(d.getTime())) return acc
+        d.setHours(0,0,0,0)
+        if (d < start || d > end) return acc
+        return acc + (parseFloat((row[sessIdx] || "0").replace(/\./g, "").replace(",", ".")) || 0)
+      }, 0)
+    }
+    const today = new Date(); today.setHours(0,0,0,0)
+    const s7end   = new Date(today); s7end.setDate(today.getDate() - 1)
+    const s7start = new Date(today); s7start.setDate(today.getDate() - 7)
+    const p7end   = new Date(today); p7end.setDate(today.getDate() - 8)
+    const p7start = new Date(today); p7start.setDate(today.getDate() - 14)
+    return {
+      current: calcWindow(s7start, s7end),
+      previous: calcWindow(p7start, p7end),
+    }
+  }, [ga4Data])
 
   // ── Gráfico ───────────────────────────────────────────────────────────────
   const chartData = useMemo(() => {
@@ -924,6 +1133,15 @@ const Capa: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* ── Leitura IA — largura total ──────────────────────────────────── */}
+      <CapaAIInsight
+        last7Totals={last7Totals}
+        prev7Totals={prev7Totals}
+        generalTotals={totaisGerais}
+        vehicleData={last7VehicleData}
+        sessionsData={sessionsInsightData}
+      />
     </div>
   )
 }
