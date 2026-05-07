@@ -340,110 +340,111 @@ const VeiculacaoOffline: React.FC = () => {
     <div className="h-full flex flex-col space-y-4 overflow-auto">
       {/* Header */}
       <div className="card-overlay rounded-2xl shadow-lg px-5 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src="/images/LOGO_JETOUR.png" alt="Jetour" className="h-7 object-contain" />
-            <div>
-              <h1 className="text-lg font-bold text-gray-900 leading-tight">Off-line</h1>
-              <p className="text-xs text-gray-500">Veiculação em mídias tradicionais</p>
-            </div>
+        {/* Título */}
+        <div className="flex items-center gap-3 mb-3 md:mb-0">
+          <img src="/images/LOGO_JETOUR.png" alt="Jetour" className="h-7 object-contain" />
+          <div>
+            <h1 className="text-lg font-bold text-gray-900 leading-tight">Off-line</h1>
+            <p className="text-xs text-gray-500">Veiculação em mídias tradicionais</p>
           </div>
+        </div>
 
-          {/* Filtros */}
-          <div className="flex items-center gap-3">
-            {/* Filtro Campanha */}
-            <select
-              value={filtroCampanha}
-              onChange={(e) => {
-                setFiltroCampanha(e.target.value)
-                setExpandedCampanha(e.target.value || null)
-              }}
-              className="text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
-            >
-              <option value="">Campanha: Todas</option>
-              {processedData.campanhas.map((campanha) => (
-                <option key={campanha} value={campanha}>
-                  {campanha}
-                </option>
-              ))}
-            </select>
+        {/* Filtros — empilhados no mobile, inline no desktop */}
+        <div className="grid grid-cols-1 md:flex md:items-center gap-2 md:gap-3 mt-3 md:mt-0 md:justify-end">
+          {/* Filtro Campanha */}
+          <select
+            value={filtroCampanha}
+            onChange={(e) => {
+              setFiltroCampanha(e.target.value)
+              setExpandedCampanha(e.target.value || null)
+            }}
+            className="w-full md:w-auto text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+          >
+            <option value="">Campanha: Todas</option>
+            {processedData.campanhas.map((campanha) => (
+              <option key={campanha} value={campanha}>
+                {campanha}
+              </option>
+            ))}
+          </select>
 
-            {/* Filtro Mês */}
-            <select
-              value={filtroMes}
-              onChange={(e) => setFiltroMes(e.target.value)}
-              className="text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
-            >
-              <option value="">Mês: Todos</option>
-              {processedData.meses.map((mes) => (
-                <option key={mes} value={mes}>
-                  {MESES[mes] || mes}
-                </option>
-              ))}
-            </select>
+          {/* Filtro Mês */}
+          <select
+            value={filtroMes}
+            onChange={(e) => setFiltroMes(e.target.value)}
+            className="w-full md:w-auto text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+          >
+            <option value="">Mês: Todos</option>
+            {processedData.meses.map((mes) => (
+              <option key={mes} value={mes}>
+                {MESES[mes] || mes}
+              </option>
+            ))}
+          </select>
 
-            {/* Filtro Praça */}
-            <select
-              value={filtroPraca}
-              onChange={(e) => setFiltroPraca(e.target.value)}
-              className="text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+          {/* Filtro Praça */}
+          <select
+            value={filtroPraca}
+            onChange={(e) => setFiltroPraca(e.target.value)}
+            className="w-full md:w-auto text-sm bg-white border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+          >
+            <option value="">Praça: Todas</option>
+            {processedData.pracasCategorized["Abrangência"].length > 0 && (
+              <optgroup label="Abrangência">
+                {processedData.pracasCategorized["Abrangência"].map((praca) => (
+                  <option key={praca} value={praca}>{praca}</option>
+                ))}
+              </optgroup>
+            )}
+            {processedData.pracasCategorized["Regiões"].length > 0 && (
+              <optgroup label="Regiões">
+                {processedData.pracasCategorized["Regiões"].map((praca) => (
+                  <option key={praca} value={praca}>{praca}</option>
+                ))}
+              </optgroup>
+            )}
+            {processedData.pracasCategorized["Estados"].length > 0 && (
+              <optgroup label="Estados">
+                {processedData.pracasCategorized["Estados"].map((praca) => (
+                  <option key={praca} value={praca}>{praca}</option>
+                ))}
+              </optgroup>
+            )}
+            {processedData.pracasCategorized["Cidades"].length > 0 && (
+              <optgroup label="Cidades">
+                {processedData.pracasCategorized["Cidades"].map((praca) => (
+                  <option key={praca} value={praca}>{praca}</option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+
+          {/* Limpar filtros */}
+          {(filtroCampanha || filtroPraca || filtroMes) && (
+            <button
+              onClick={limparFiltros}
+              className="w-full md:w-auto text-sm text-blue-600 hover:text-blue-800 underline text-center py-2 md:py-0"
             >
-              <option value="">Praça: Todas</option>
-              {processedData.pracasCategorized["Abrangência"].length > 0 && (
-                <optgroup label="Abrangência">
-                  {processedData.pracasCategorized["Abrangência"].map((praca) => (
-                    <option key={praca} value={praca}>
-                      {praca}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {processedData.pracasCategorized["Regiões"].length > 0 && (
-                <optgroup label="Regiões">
-                  {processedData.pracasCategorized["Regiões"].map((praca) => (
-                    <option key={praca} value={praca}>
-                      {praca}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {processedData.pracasCategorized["Estados"].length > 0 && (
-                <optgroup label="Estados">
-                  {processedData.pracasCategorized["Estados"].map((praca) => (
-                    <option key={praca} value={praca}>
-                      {praca}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {processedData.pracasCategorized["Cidades"].length > 0 && (
-                <optgroup label="Cidades">
-                  {processedData.pracasCategorized["Cidades"].map((praca) => (
-                    <option key={praca} value={praca}>
-                      {praca}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-          </div>
+              Limpar filtros
+            </button>
+          )}
         </div>
       </div>
 
       {/* Cards de Métricas Gerais */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "Campanhas",        value: String(processedData.totais.campanhas),                      icon: <FileText className="w-4 h-4" /> },
-          { label: "Veículos",         value: String(processedData.totais.veiculos),                       icon: <Radio className="w-4 h-4" /> },
-          { label: "Investimento Total", value: formatCurrency(processedData.totais.investimento),         icon: <DollarSign className="w-4 h-4" /> },
-          { label: "Entrega",          value: formatNumber(processedData.totais.insercoes),                 icon: <TrendingUp className="w-4 h-4" /> },
+          { label: "Campanhas",          value: String(processedData.totais.campanhas),              icon: <FileText className="w-4 h-4" /> },
+          { label: "Veículos",           value: String(processedData.totais.veiculos),               icon: <Radio className="w-4 h-4" /> },
+          { label: "Investimento Total", value: formatCurrency(processedData.totais.investimento),   icon: <DollarSign className="w-4 h-4" /> },
+          { label: "Entrega",            value: formatNumber(processedData.totais.insercoes),         icon: <TrendingUp className="w-4 h-4" /> },
         ].map((card) => (
           <div key={card.label} className="bg-slate-700/80 rounded-2xl px-3 py-3 flex flex-col gap-1 text-white">
             <div className="flex items-center gap-1.5 text-slate-300 text-xs">
               {card.icon}
               {card.label}
             </div>
-            <div className="text-base font-bold truncate">{card.value}</div>
+            <div className="text-base font-bold">{card.value}</div>
           </div>
         ))}
       </div>
@@ -454,7 +455,7 @@ const VeiculacaoOffline: React.FC = () => {
           <Radio className="w-4 h-4 text-blue-600" />
           Veiculação por Mês
         </h2>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {processedData.meses.length === 0 ? (
             <p className="text-sm text-gray-500 col-span-3">Nenhum dado de mês disponível.</p>
           ) : (
@@ -493,25 +494,17 @@ const VeiculacaoOffline: React.FC = () => {
       </div>
 
       {/* Grid: Campanhas (40%) + Meios (60%) */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         {/* Card de Campanhas com Accordion */}
-        <div className="card-overlay rounded-2xl shadow-lg p-5 h-[600px] flex flex-col col-span-2">
+        <div className="card-overlay rounded-2xl shadow-lg p-5 h-auto md:h-[600px] flex flex-col col-span-1 md:col-span-2">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-bold text-gray-900 flex items-center">
               <Megaphone className="w-4 h-4 mr-2 text-blue-600" />
               Campanhas ({processedData.campanhasData.length})
             </h2>
-            {(filtroCampanha || filtroPraca || filtroMes) && (
-              <button
-                onClick={limparFiltros}
-                className="text-xs text-blue-600 hover:text-blue-800 underline"
-              >
-                Limpar
-              </button>
-            )}
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-2">
+          <div className="flex-1 md:overflow-y-auto space-y-2">
             {processedData.campanhasData.map((campanha, index) => (
               <div key={index}>
                 {/* Card da Campanha */}
@@ -605,7 +598,7 @@ const VeiculacaoOffline: React.FC = () => {
         </div>
 
         {/* Card de Meios (60%) */}
-        <div className="card-overlay rounded-2xl shadow-lg p-5 h-[600px] flex flex-col col-span-3">
+        <div className="card-overlay rounded-2xl shadow-lg p-5 h-auto md:h-[600px] flex flex-col col-span-1 md:col-span-3">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-bold text-gray-900 flex items-center">
               <Radio className="w-4 h-4 mr-2 text-blue-600" />
@@ -613,7 +606,7 @@ const VeiculacaoOffline: React.FC = () => {
             </h2>
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-2">
+          <div className="flex-1 md:overflow-y-auto space-y-2">
             {(Object.values(processedData.meios) as MeioData[]).map((meio) => (
               <div key={meio.nome} className="border border-gray-200 rounded-2xl overflow-hidden">
                 <div

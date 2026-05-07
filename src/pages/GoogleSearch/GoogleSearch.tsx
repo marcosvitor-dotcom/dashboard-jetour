@@ -400,48 +400,29 @@ const GoogleSearch: React.FC = () => {
       </div>
 
       {/* Big numbers */}
-      <div className="grid grid-cols-4 lg:grid-cols-8 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         {[
-          { label: "Investimento",    value: fmtCurrency(totals.cost),          icon: <DollarSign className="w-4 h-4" /> },
-          { label: "Impressões",      value: fmt(totals.impressions),            icon: <Eye className="w-4 h-4" /> },
-          { label: "Cliques",         value: fmt(totals.clicks),                 icon: <MousePointer className="w-4 h-4" /> },
-          { label: "Conversões",      value: fmt(totals.conversions),            icon: <Target className="w-4 h-4" /> },
-          { label: "CPM",             value: fmtCurrency(totals.cpm),            icon: <TrendingUp className="w-4 h-4" /> },
-          { label: "CPC Médio",       value: fmtCurrency(totals.cpc),            icon: <DollarSign className="w-4 h-4" /> },
-          { label: "CTR",             value: fmtPct(totals.ctr),                 icon: <TrendingUp className="w-4 h-4" /> },
-          { label: "Taxa Conv.",      value: fmtPct(totals.convRate),            icon: <Target className="w-4 h-4" /> },
+          { label: "Investimento",  value: fmtCurrency(totals.cost),                          icon: <DollarSign className="w-4 h-4" /> },
+          { label: "Impressões",    value: totals.impressions.toLocaleString("pt-BR"),         icon: <Eye className="w-4 h-4" /> },
+          { label: "Cliques",       value: totals.clicks.toLocaleString("pt-BR"),              icon: <MousePointer className="w-4 h-4" /> },
+          { label: "Conversões",    value: totals.conversions.toLocaleString("pt-BR"),         icon: <Target className="w-4 h-4" /> },
+          { label: "CPM",           value: fmtCurrency(totals.cpm),                            icon: <TrendingUp className="w-4 h-4" /> },
+          { label: "CPC Médio",     value: fmtCurrency(totals.cpc),                            icon: <DollarSign className="w-4 h-4" /> },
+          { label: "CTR",           value: fmtPct(totals.ctr),                                 icon: <TrendingUp className="w-4 h-4" /> },
+          { label: "Taxa de Conv.", value: fmtPct(totals.convRate),                            icon: <Target className="w-4 h-4" /> },
         ].map((c) => (
           <div key={c.label} className="bg-slate-700/80 rounded-2xl px-3 py-3 flex flex-col gap-1 text-white">
             <div className="flex items-center gap-1.5 text-slate-300 text-xs">{c.icon}{c.label}</div>
-            <div className="text-sm font-bold truncate">{c.value}</div>
+            <div className="text-base md:text-sm font-bold">{c.value}</div>
           </div>
         ))}
       </div>
 
       {/* Nuvem + Filtros + Top rankings */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-        {/* Nuvem de termos reais */}
-        <div className="card-overlay rounded-2xl shadow-lg p-4">
-          <p className="text-sm font-bold text-gray-800 mb-0.5">Nuvem de Termos de Busca</p>
-          <p className="text-xs text-gray-400 mb-3">Termos reais pesquisados · tamanho proporcional às impressões</p>
-          {cloudWords.length > 0 ? (
-            <div style={{ height: 300, width: "100%" }}>
-              <WordCloudSVG words={cloudWords} />
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
-              Sem dados para nuvem de palavras
-            </div>
-          )}
-          <div className="mt-3 flex items-center justify-between text-[10px] text-gray-400 border-t border-gray-100 pt-2">
-            <span>{groupedTerms.length} termos únicos</span>
-            <span>{fmt(totals.termImpressions)} impressões · {fmt(totals.termClicks)} cliques</span>
-          </div>
-        </div>
-
-        {/* Filtros + Top rankings */}
-        <div className="card-overlay rounded-2xl shadow-lg p-4 flex flex-col gap-4">
+        {/* Filtros + Top rankings — primeiro no mobile */}
+        <div className="card-overlay rounded-2xl shadow-lg p-4 flex flex-col gap-4 order-1 md:order-2">
 
           {/* Filtros */}
           <div className="grid grid-cols-2 gap-3">
@@ -496,7 +477,7 @@ const GoogleSearch: React.FC = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
                           <span className="text-[10px] text-gray-700 truncate font-medium">{r.keyword}</span>
-                          <span className="text-[10px] font-bold text-blue-600 shrink-0 ml-1">{fmt(r.clicks)}</span>
+                          <span className="text-[10px] font-bold text-blue-600 shrink-0 ml-1">{r.clicks.toLocaleString("pt-BR")}</span>
                         </div>
                         <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
                           <div className="h-full bg-blue-500 rounded-full" style={{ width: `${(r.clicks/max)*100}%` }} />
@@ -520,7 +501,7 @@ const GoogleSearch: React.FC = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
                           <span className="text-[10px] text-gray-700 truncate font-medium">{r.searchTerm}</span>
-                          <span className="text-[10px] font-bold text-purple-600 shrink-0 ml-1">{fmt(r.clicks)}</span>
+                          <span className="text-[10px] font-bold text-purple-600 shrink-0 ml-1">{r.clicks.toLocaleString("pt-BR")}</span>
                         </div>
                         <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
                           <div className="h-full bg-purple-500 rounded-full" style={{ width: `${(r.clicks/max)*100}%` }} />
@@ -534,6 +515,26 @@ const GoogleSearch: React.FC = () => {
           </div>
 
         </div>
+
+        {/* Nuvem de termos reais — segundo no mobile */}
+        <div className="card-overlay rounded-2xl shadow-lg p-4 order-2 md:order-1">
+          <p className="text-sm font-bold text-gray-800 mb-0.5">Nuvem de Termos de Busca</p>
+          <p className="text-xs text-gray-400 mb-3">Termos reais pesquisados · tamanho proporcional às impressões</p>
+          {cloudWords.length > 0 ? (
+            <div style={{ height: 300, width: "100%" }}>
+              <WordCloudSVG words={cloudWords} />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
+              Sem dados para nuvem de palavras
+            </div>
+          )}
+          <div className="mt-3 flex items-center justify-between text-[10px] text-gray-400 border-t border-gray-100 pt-2">
+            <span>{groupedTerms.length} termos únicos</span>
+            <span>{totals.termImpressions.toLocaleString("pt-BR")} impressões · {totals.termClicks.toLocaleString("pt-BR")} cliques</span>
+          </div>
+        </div>
+
       </div>
 
       {/* Tabs + Tabelas */}
@@ -587,14 +588,14 @@ const GoogleSearch: React.FC = () => {
                         <span className="px-2 py-0.5 rounded-full text-white text-[10px] font-semibold bg-blue-500">{r.matchType || "—"}</span>
                       </td>
                       <td className="py-2.5 px-3 text-right font-semibold text-gray-800">{fmtCurrency(r.cost)}</td>
-                      <td className="py-2.5 px-3 text-right text-gray-700">{fmt(r.clicks)}</td>
-                      <td className="py-2.5 px-3 text-right text-gray-700">{fmt(r.impressions)}</td>
+                      <td className="py-2.5 px-3 text-right text-gray-700">{r.clicks.toLocaleString("pt-BR")}</td>
+                      <td className="py-2.5 px-3 text-right text-gray-700">{r.impressions.toLocaleString("pt-BR")}</td>
                       <td className="py-2.5 px-3 text-right text-gray-700">{fmtPct(r.ctr)}</td>
                       <td className="py-2.5 px-3 text-right text-gray-700">{fmtCurrency(r.avgCpc)}</td>
-                      <td className="py-2.5 px-3 text-right text-gray-700">{r.conversions > 0 ? fmt(r.conversions) : "—"}</td>
+                      <td className="py-2.5 px-3 text-right text-gray-700">{r.conversions > 0 ? r.conversions.toLocaleString("pt-BR") : "—"}</td>
                       <td className="py-2.5 px-3 text-right">
                         {r.lifetimeClicks > 0
-                          ? <span className="text-[10px] text-indigo-600 font-semibold">{fmt(r.lifetimeClicks)} cliques</span>
+                          ? <span className="text-[10px] text-indigo-600 font-semibold">{r.lifetimeClicks.toLocaleString("pt-BR")} cliques</span>
                           : <span className="text-[10px] text-gray-300">—</span>}
                       </td>
                     </tr>
@@ -648,11 +649,11 @@ const GoogleSearch: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-2.5 px-3 text-right font-semibold text-gray-800">{fmtCurrency(r.cost)}</td>
-                      <td className="py-2.5 px-3 text-right text-gray-700">{fmt(r.clicks)}</td>
-                      <td className="py-2.5 px-3 text-right text-gray-700">{fmt(r.impressions)}</td>
+                      <td className="py-2.5 px-3 text-right text-gray-700">{r.clicks.toLocaleString("pt-BR")}</td>
+                      <td className="py-2.5 px-3 text-right text-gray-700">{r.impressions.toLocaleString("pt-BR")}</td>
                       <td className="py-2.5 px-3 text-right text-gray-700">{fmtPct(r.ctr)}</td>
                       <td className="py-2.5 px-3 text-right text-gray-700">{fmtCurrency(r.avgCpc)}</td>
-                      <td className="py-2.5 px-3 text-right text-gray-700">{r.conversions > 0 ? fmt(r.conversions) : "—"}</td>
+                      <td className="py-2.5 px-3 text-right text-gray-700">{r.conversions > 0 ? r.conversions.toLocaleString("pt-BR") : "—"}</td>
                     </tr>
                   ))}
                   {groupedTerms.length === 0 && (
