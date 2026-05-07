@@ -65,11 +65,7 @@ const parseF = (v: string) => {
   return isNaN(n) ? 0 : n
 }
 
-const fmt = (v: number) => {
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(".", ",")} mi`
-  if (v >= 1_000) return `${(v / 1_000).toFixed(1).replace(".", ",")} mil`
-  return v.toLocaleString("pt-BR")
-}
+const fmt = (v: number) => v.toLocaleString("pt-BR")
 
 const fmtPct = (v: number) => `${(v * 100).toFixed(2).replace(".", ",")}%`
 const fmtPctRaw = (v: number) => `${v.toFixed(2).replace(".", ",")}%`
@@ -196,7 +192,6 @@ const LiPostCard: React.FC<{ post: LiPost }> = ({ post }) => {
               <span className="text-xs font-medium">{post.mediaCategory || "POST"}</span>
             </div>
           )}
-          {/* Badge tipo */}
           {post.mediaCategory && (
             <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded-md text-white text-[9px] font-semibold bg-[#0077b5]/80">
               {post.mediaCategory}
@@ -239,14 +234,9 @@ const LiPostCard: React.FC<{ post: LiPost }> = ({ post }) => {
               <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
             </div>
 
-            {/* Imagem ampliada ou fallback texto */}
             {post.thumbnail ? (
               <div className="rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center">
-                <img
-                  src={post.thumbnail}
-                  alt="criativo"
-                  className="w-full object-contain max-h-72 rounded-xl"
-                />
+                <img src={post.thumbnail} alt="criativo" className="w-full object-contain max-h-72 rounded-xl" />
               </div>
             ) : (
               <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600 leading-relaxed">
@@ -254,7 +244,6 @@ const LiPostCard: React.FC<{ post: LiPost }> = ({ post }) => {
               </div>
             )}
 
-            {/* Texto do post */}
             {post.postText && (
               <p className="mt-3 text-xs text-gray-500 leading-relaxed line-clamp-3">{post.postText}</p>
             )}
@@ -412,7 +401,7 @@ const OrganicoLinkedIn: React.FC = () => {
     return { gainSeguidores, totalImpressions, totalUniqueImpressions, totalClicks, totalLikes, totalComments, totalShares, avgEngagement }
   }, [filteredDays, allPosts])
 
-  // ── Trend: últimos 7 dias vs. 7 dias anteriores (sobre dados completos) ──────
+  // ── Trend ────────────────────────────────────────────────────────────────────
   const liTrend = useMemo(() => {
     if (followerDays.length < 2) return 0
     const last7 = followerDays.slice(-7).reduce((s, d) => s + d.organicGain, 0)
@@ -472,40 +461,40 @@ const OrganicoLinkedIn: React.FC = () => {
     <div className="h-full flex flex-col space-y-4 overflow-auto">
 
       {/* Header */}
-      <div className="card-overlay rounded-2xl shadow-lg px-5 py-4 flex items-center justify-between">
+      <div className="card-overlay rounded-2xl shadow-lg px-5 py-4">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[#0077b5] flex items-center justify-center">
+          <div className="w-9 h-9 shrink-0 rounded-xl bg-[#0077b5] flex items-center justify-center">
             <svg className="w-5 h-5 text-white" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50" fill="currentColor">
               <path d="M41,4H9C6.24,4,4,6.24,4,9v32c0,2.76,2.24,5,5,5h32c2.76,0,5-2.24,5-5V9C46,6.24,43.76,4,41,4z M17,20v19h-6V20H17z M11,14.47c0-1.4,1.2-2.47,3-2.47s2.93,1.07,3,2.47c0,1.4-1.12,2.53-3,2.53C12.2,17,11,15.87,11,14.47z M39,39h-6c0,0,0-9.26,0-10 c0-2-1-4-3.5-4.04h-0.08C27,24.96,26,27.02,26,29c0,0.91,0,10,0,10h-6V20h6v2.56c0,0,1.93-2.56,5.81-2.56 c3.97,0,7.19,2.73,7.19,8.26V39z"/>
             </svg>
           </div>
-          <div>
-            <h1 className="text-lg font-bold text-gray-900 leading-tight">Orgânico — LinkedIn</h1>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-base font-bold text-gray-900 leading-tight">Orgânico — LinkedIn</h1>
             <p className="text-xs text-gray-500">Performance orgânica da página Jetour Brasil</p>
           </div>
           <div
             title="Comparado à semana anterior (novos seguidores orgânicos)"
-            className="ml-4 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full cursor-default"
+            className="shrink-0 flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full cursor-default"
             style={{ backgroundColor: liTrend >= 0 ? "#dcfce7" : "#fee2e2", color: liTrend >= 0 ? "#16a34a" : "#dc2626" }}>
             {liTrend >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-            {Math.abs(liTrend).toFixed(1)}%
-            <span className="text-[10px] opacity-70 font-normal">vs semana ant.</span>
+            <span>{Math.abs(liTrend).toFixed(1)}%</span>
+            <span className="hidden sm:inline text-[10px] opacity-70 font-normal">vs semana ant.</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400">Período (seguidores):</span>
+        <div className="flex flex-wrap items-center gap-2 mt-3">
+          <span className="text-xs text-gray-400">Período:</span>
           <input type="date" value={start} min={minDate} max={end}
             onChange={(e) => setDateRange((p) => ({ ...p, start: e.target.value }))}
-            className="px-2 py-1.5 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#0077b5]" />
+            className="flex-1 min-w-0 px-2 py-1.5 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#0077b5]" />
           <span className="text-xs text-gray-400">até</span>
           <input type="date" value={end} min={start} max={maxDate}
             onChange={(e) => setDateRange((p) => ({ ...p, end: e.target.value }))}
-            className="px-2 py-1.5 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#0077b5]" />
+            className="flex-1 min-w-0 px-2 py-1.5 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#0077b5]" />
         </div>
       </div>
 
       {/* Big Numbers */}
-      <div className="grid grid-cols-4 lg:grid-cols-8 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
         {[
           { label: "Ganho de seguidores",  value: fmt(bigNumbers.gainSeguidores),           icon: <Users className="w-4 h-4" /> },
           { label: "Impressões totais",    value: fmt(bigNumbers.totalImpressions),         icon: <Eye className="w-4 h-4" /> },
@@ -518,13 +507,13 @@ const OrganicoLinkedIn: React.FC = () => {
         ].map((c) => (
           <div key={c.label} className="bg-slate-700/80 rounded-2xl px-3 py-3 flex flex-col gap-1 text-white">
             <div className="flex items-center gap-1.5 text-slate-300 text-xs">{c.icon}{c.label}</div>
-            <div className="text-sm font-bold truncate">{c.value}</div>
+            <div className="text-base md:text-sm font-bold">{c.value}</div>
           </div>
         ))}
       </div>
 
       {/* Gráficos */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="card-overlay rounded-2xl shadow-lg p-4">
           <LineChart
             series={[{ id: "Ganho orgânico", color: "#0077b5", data: followerChartData }]}
@@ -539,8 +528,8 @@ const OrganicoLinkedIn: React.FC = () => {
         </div>
       </div>
 
-      {/* Layout 2 colunas: esquerda análises, direita posts */}
-      <div className="grid grid-cols-2 gap-4 items-stretch">
+      {/* Layout: esquerda análises, direita posts */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
 
         {/* ── Coluna esquerda: análises empilhadas ── */}
         <div className="flex flex-col gap-4">
@@ -608,16 +597,16 @@ const OrganicoLinkedIn: React.FC = () => {
           )}
         </div>
 
-        {/* ── Coluna direita: cards de posts (50% da largura) ── */}
-        <div className="card-overlay rounded-2xl shadow-lg p-4 flex flex-col gap-3 h-full">
-          <div className="flex items-center justify-between">
+        {/* ── Coluna direita: cards de posts ── */}
+        <div className="card-overlay rounded-2xl shadow-lg p-4 flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             <p className="text-sm font-bold text-gray-900">Publicações ({allPosts.length})</p>
-            <div className="flex items-center gap-2">
-              <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <ArrowUpDown className="w-3.5 h-3.5 text-gray-400 shrink-0" />
               <select
                 value={sortBy}
                 onChange={(e) => { setSortBy(e.target.value as "impressions" | "engagementRate" | "likes" | "comments" | "shares" | "clicks"); setCurrentPage(1) }}
-                className="px-2 py-1 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#0077b5]"
+                className="flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#0077b5]"
               >
                 <option value="impressions">Impressões</option>
                 <option value="engagementRate">Taxa de engajamento</option>
@@ -629,7 +618,7 @@ const OrganicoLinkedIn: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 overflow-y-auto pr-1 flex-1 content-start">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-y-auto pr-1 flex-1 content-start">
             {pagedPosts.map((post, i) => (
               <LiPostCard key={i} post={post} />
             ))}

@@ -54,11 +54,7 @@ const parseN = (v: string | undefined) => {
   return isNaN(n) ? 0 : n
 }
 
-const fmt = (v: number) => {
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(".", ",")} mi`
-  if (v >= 1_000) return `${(v / 1_000).toFixed(1).replace(".", ",")} mil`
-  return v.toLocaleString("pt-BR")
-}
+const fmt = (v: number) => v.toLocaleString("pt-BR")
 
 const fmtPct = (v: number) => `${v.toFixed(2).replace(".", ",")}%`
 
@@ -413,40 +409,40 @@ const OrganicoFacebook: React.FC = () => {
     <div className="h-full flex flex-col space-y-4 overflow-auto">
 
       {/* Header */}
-      <div className="card-overlay rounded-2xl shadow-lg px-5 py-4 flex items-center justify-between">
+      <div className="card-overlay rounded-2xl shadow-lg px-5 py-4">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center">
+          <div className="w-9 h-9 shrink-0 rounded-xl bg-blue-600 flex items-center justify-center">
             <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
               <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
             </svg>
           </div>
-          <div>
-            <h1 className="text-lg font-bold text-gray-900 leading-tight">Orgânico — Facebook</h1>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-base font-bold text-gray-900 leading-tight">Orgânico — Facebook</h1>
             <p className="text-xs text-gray-500">Performance orgânica da página Jetour Brasil</p>
           </div>
           <div
             title="Comparado à semana anterior (novos seguidores)"
-            className="ml-4 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full cursor-default"
+            className="shrink-0 flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full cursor-default"
             style={{ backgroundColor: fbTrend >= 0 ? "#dcfce7" : "#fee2e2", color: fbTrend >= 0 ? "#16a34a" : "#dc2626" }}>
             {fbTrend >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-            {Math.abs(fbTrend).toFixed(1)}%
-            <span className="text-[10px] opacity-70 font-normal">vs semana ant.</span>
+            <span>{Math.abs(fbTrend).toFixed(1)}%</span>
+            <span className="hidden sm:inline text-[10px] opacity-70 font-normal">vs semana ant.</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 mt-3">
           <span className="text-xs text-gray-400">Período:</span>
           <input type="date" value={start} min={minDate} max={end}
             onChange={(e) => setDateRange((p) => ({ ...p, start: e.target.value }))}
-            className="px-2 py-1.5 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            className="flex-1 min-w-0 px-2 py-1.5 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-400" />
           <span className="text-xs text-gray-400">até</span>
           <input type="date" value={end} min={start} max={maxDate}
             onChange={(e) => setDateRange((p) => ({ ...p, end: e.target.value }))}
-            className="px-2 py-1.5 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            className="flex-1 min-w-0 px-2 py-1.5 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-400" />
         </div>
       </div>
 
       {/* Big Numbers */}
-      <div className="grid grid-cols-4 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
           { label: "Seguidores totais",   value: fmt(bigNumbers.followers),         icon: <Users className="w-4 h-4" /> },
           { label: "Ganho de seguidores", value: fmt(bigNumbers.gainSeguidores),    icon: <TrendingUp className="w-4 h-4" /> },
@@ -462,13 +458,13 @@ const OrganicoFacebook: React.FC = () => {
         ].map((c) => (
           <div key={c.label} className="bg-slate-700/80 rounded-2xl px-3 py-3 flex flex-col gap-1 text-white">
             <div className="flex items-center gap-1.5 text-slate-300 text-xs">{c.icon}{c.label}</div>
-            <div className="text-sm font-bold truncate">{c.value}</div>
+            <div className="text-base md:text-sm font-bold">{c.value}</div>
           </div>
         ))}
       </div>
 
       {/* Gráficos */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card-overlay rounded-2xl shadow-lg p-4">
           <LineChart
             series={[{ id: "Novos seguidores", color: "#3b82f6", data: followerChartData }]}
@@ -490,7 +486,7 @@ const OrganicoFacebook: React.FC = () => {
       </div>
 
       {/* Atividade + Posts */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
         {/* Dias mais ativos */}
         <div className="card-overlay rounded-2xl shadow-lg p-4">
@@ -513,16 +509,16 @@ const OrganicoFacebook: React.FC = () => {
         </div>
 
         {/* Posts */}
-        <div className="col-span-2 card-overlay rounded-2xl shadow-lg p-4">
-          <div className="flex items-center justify-between mb-3">
+        <div className="md:col-span-2 card-overlay rounded-2xl shadow-lg p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
             <p className="text-sm font-bold text-gray-900">Publicações ({sortedPosts.length})</p>
-            <div className="flex items-center gap-2">
-              <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
-              <span className="text-xs text-gray-500">Ordenar por:</span>
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <ArrowUpDown className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+              <span className="text-xs text-gray-500 shrink-0">Ordenar por:</span>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as SortKey)}
-                className="px-2 py-1 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
               >
                 <option value="totalReactions">Reações</option>
                 <option value="totalLikes">Curtidas</option>
@@ -531,18 +527,18 @@ const OrganicoFacebook: React.FC = () => {
                 <option value="reach">Alcance</option>
                 <option value="videoViews">Video Views</option>
               </select>
-              <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                <Eye className="w-3.5 h-3.5" />
-                Clique para detalhes
-              </div>
+            </div>
+            <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-400">
+              <Eye className="w-3.5 h-3.5" />
+              Clique para detalhes
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3 max-h-[480px] overflow-y-auto pr-1">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[480px] overflow-y-auto pr-1">
             {sortedPosts.map((post, i) => (
               <FbPostCard key={i} post={post} />
             ))}
             {sortedPosts.length === 0 && (
-              <p className="col-span-3 text-sm text-gray-400 text-center py-8">Nenhuma publicação encontrada</p>
+              <p className="col-span-2 sm:col-span-3 text-sm text-gray-400 text-center py-8">Nenhuma publicação encontrada</p>
             )}
           </div>
         </div>
