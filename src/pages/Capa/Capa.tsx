@@ -419,6 +419,66 @@ const Capa: React.FC = () => {
     return { ...totals, cpm, ctr, cpl }
   }, [filteredLast7DaysWithGS])
 
+  // ── Leads cruzados do card inferior (últimos 7 dias ou período filtrado) ───
+  // Sem filtro ativo: janela fixa últimos 7 dias
+  // Com filtro ativo: mesmo período do card geral (totalLeadsCruzado)
+  const last7LeadsCruzado = useMemo(() => {
+    if (isFiltered) return totalLeadsCruzado
+
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1); yesterday.setHours(0,0,0,0)
+    const start7 = new Date(yesterday); start7.setDate(yesterday.getDate() - 6); start7.setHours(0,0,0,0)
+
+    const trackedPlatforms = new Set<string>()
+    if (consolidadoData?.success && consolidadoData?.data?.values && consolidadoData.data.values.length > 1) {
+      const headers = consolidadoData.data.values[0]
+      const veiculoIdx = headers.indexOf("Veículo")
+      const leadsIdx = headers.indexOf("Leads")
+      const dateIdx = headers.indexOf("Date")
+      consolidadoData.data.values.slice(1).forEach((row) => {
+        if (!row[dateIdx]) return
+        const d = parseRowDate(row[dateIdx])
+        if (!d) return
+        d.setHours(0,0,0,0)
+        if (d < start7 || d > yesterday) return
+        const leads = parseBrazilianNumber(row[leadsIdx] || "0")
+        if (leads > 0 && row[veiculoIdx]) trackedPlatforms.add(row[veiculoIdx].trim().toLowerCase())
+      })
+    }
+
+    const normalizeSource = (src: string): string => {
+      const s = src.toLowerCase()
+      if (["ig", "l.instagram.com", "instagram.com", "instagram"].includes(s)) return "instagram"
+      if (["fb", "l.facebook.com", "m.facebook.com", "facebook.com", "meta", "facebook"].includes(s)) return "meta"
+      if (["google", "google ads", "cpc"].includes(s)) return "google"
+      if (s === "linkedin-traf" || s === "linkedin") return "linkedin"
+      if (s === "kwai.com" || s === "kwai") return "kwai"
+      if (s === "ads.tiktok.com" || s === "tiktok") return "tiktok"
+      if (["tagassistant.google.com", "gtm_teste"].includes(s)) return "testes"
+      return s
+    }
+
+    let extra = 0
+    if (ga4LeadsData?.success && ga4LeadsData?.data?.values && ga4LeadsData.data.values.length > 1) {
+      const headers = ga4LeadsData.data.values[0]
+      const srcIdx = headers.indexOf("Session source")
+      const cntIdx = headers.indexOf("Event count")
+      const dateIdx = headers.indexOf("Date")
+      ga4LeadsData.data.values.slice(1).forEach((row) => {
+        const normalized = normalizeSource(row[srcIdx] || "")
+        if (normalized === "testes") return
+        if (trackedPlatforms.has(normalized)) return
+        if (dateIdx !== -1 && row[dateIdx]) {
+          const d = new Date(row[dateIdx] + "T00:00:00")
+          if (isNaN(d.getTime()) || d < start7 || d > yesterday) return
+        }
+        extra += parseInt(row[cntIdx] || "0", 10) || 0
+      })
+    }
+
+    return last7Totals.leads + extra
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFiltered, totalLeadsCruzado, consolidadoData, ga4LeadsData, last7Totals.leads])
+
   // ── Totais dos 7 dias ANTERIORES (para comparação IA) ────────────────────
   const prev7Totals = useMemo(() => {
     if (!consolidadoData?.success || !consolidadoData?.data?.values) {
@@ -990,10 +1050,10 @@ const Capa: React.FC = () => {
             {[
               { label: "Investimento", value: formatCurrency(last7Totals.spent) },
               { label: "Impressões",   value: formatNumber(last7Totals.impressions) },
-              { label: "Leads",        value: formatNumber(last7Totals.leads) },
+              { label: "Leads",        value: formatNumber(last7LeadsCruzado) },
               { label: "CPM",          value: formatCurrency(last7Totals.cpm) },
               { label: "CTR",          value: `${last7Totals.ctr.toFixed(2)}%` },
-              { label: "CPL",          value: last7Totals.leads > 0 ? formatCurrency(last7Totals.cpl) : "—" },
+              { label: "CPL",          value: last7LeadsCruzado > 0 ? formatCurrency(last7Totals.spent / last7LeadsCruzado) : "—" },
             ].map((item) => (
               <div key={item.label} className="bg-slate-700/80 rounded-2xl p-2 text-center shadow-sm">
                 <p className="text-xs text-slate-300 font-medium">{item.label}</p>

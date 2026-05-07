@@ -16,8 +16,13 @@ import {
   Minus,
   Users,
   Search,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react"
 import PDFDownloadButton from "../../../components/PDFDownloadButton/PDFDownloadButton"
+import type { ConsolidadoData } from "../../../services/consolidadoApi"
+import { parseBrazilianNumber } from "../../../services/consolidadoApi"
+import { useIsMobile } from "../../../hooks/useIsMobile"
 
 interface DataPoint {
   date: string
@@ -34,6 +39,7 @@ interface DataPoint {
   videoViews75: number
   videoCompletions: number
   totalEngagements: number
+  leads: number
   veiculo: string
   tipoCompra: string
 }
@@ -48,11 +54,13 @@ interface WeeklyMetrics {
   impressions: number
   clicks: number
   views: number
+  leads: number
   cpm: number
   cpc: number
   ctr: number
   vtr: number
   cpv: number
+  cpl: number
 }
 
 interface WeeklyComparison {
@@ -63,11 +71,13 @@ interface WeeklyComparison {
     impressions: number
     clicks: number
     views: number
+    leads: number
     cpm: number
     cpc: number
     ctr: number
     vtr: number
     cpv: number
+    cpl: number
   }
 }
 
@@ -77,6 +87,9 @@ interface AnaliseSemanalProps {
   platformColors: Record<string, string>
   onBack: () => void
   campaigns: Array<{ name: string }>
+  ga4LeadsData?: ConsolidadoData | null
+  consolidadoData?: ConsolidadoData | null
+  totalLeadsCruzado?: number
 }
 
 // ── Ícones de plataforma ──────────────────────────────────────────────────────
@@ -135,12 +148,29 @@ const platformColor = (platform: string): string => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+const normalizeGA4Source = (src: string): string => {
+  const s = src.toLowerCase()
+  if (["ig", "l.instagram.com", "instagram.com", "instagram"].includes(s)) return "instagram"
+  if (["fb", "l.facebook.com", "m.facebook.com", "facebook.com", "meta", "facebook"].includes(s)) return "meta"
+  if (["google", "google ads", "cpc"].includes(s)) return "google"
+  if (s === "linkedin-traf" || s === "linkedin") return "linkedin"
+  if (s === "kwai.com" || s === "kwai") return "kwai"
+  if (s === "ads.tiktok.com" || s === "tiktok") return "tiktok"
+  if (["tagassistant.google.com", "gtm_teste"].includes(s)) return "testes"
+  return s
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
   processedData,
   availableVehicles,
   platformColors,
   onBack,
   campaigns,
+  ga4LeadsData,
+  consolidadoData,
+  totalLeadsCruzado: totalLeadsCruzadoProp,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null)
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: "", end: "" })
@@ -149,6 +179,8 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
   const [selectedMetric, setSelectedMetric] = useState<
     "impressions" | "clicks" | "views" | "cpm" | "cpc" | "cpv" | "ctr" | "vtr"
   >("impressions")
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const isMobile = useIsMobile()
 
   const createLocalDate = (dateStr: string) => {
     if (!dateStr) return new Date()
@@ -194,28 +226,112 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
     })
   }, [processedData, dateRange, selectedVehicles, selectedCampaign])
 
-  const calculateWeeklyMetrics = (data: DataPoint[]): WeeklyMetrics => {
+  // Parseia data no formato "DD/MM/YYYY" (formato do consolidado bruto)
+  const parseRowDate = (dateStr: string): Date | null => {
+    const parts = dateStr.split("/")
+    if (parts.length !== 3) return null
+    const [day, month, year] = parts
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+  }
+
+  // Calcula leads cruzados (consolidado bruto + GA4 extras) para um período YYYY-MM-DD
+  const computeLeadsCruzados = useCallback((startStr: string, endStr: string): number => {
+    const rangeStart = new Date(startStr + "T00:00:00")
+    const rangeEnd   = new Date(endStr   + "T00:00:00")
+    rangeStart.setHours(0, 0, 0, 0)
+    rangeEnd.setHours(0, 0, 0, 0)
+
+    // Pixel leads do consolidado bruto (mesmo parse da Capa)
+    let pixelLeads = 0
+    const trackedPlatforms = new Set<string>()
+    if (consolidadoData?.success && consolidadoData?.data?.values && consolidadoData.data.values.length > 1) {
+      const headers = consolidadoData.data.values[0]
+      const dateIdx    = headers.indexOf("Date")
+      const leadsIdx   = headers.indexOf("Leads")
+      const veiculoIdx = headers.indexOf("Veículo")
+      if (dateIdx !== -1 && leadsIdx !== -1) {
+        consolidadoData.data.values.slice(1).forEach((row) => {
+          if (!row[dateIdx]) return
+          const d = parseRowDate(row[dateIdx])
+          if (!d) return
+          d.setHours(0, 0, 0, 0)
+          if (d < rangeStart || d > rangeEnd) return
+          const leads = parseBrazilianNumber(row[leadsIdx] || "0")
+          pixelLeads += leads
+          if (leads > 0 && row[veiculoIdx]) trackedPlatforms.add(row[veiculoIdx].trim().toLowerCase())
+        })
+      }
+    }
+
+    // GA4 extras (fontes não cobertas pelo pixel)
+    let extra = 0
+    if (ga4LeadsData?.success && ga4LeadsData?.data?.values && ga4LeadsData.data.values.length > 1) {
+      const headers = ga4LeadsData.data.values[0]
+      const srcIdx  = headers.indexOf("Session source")
+      const cntIdx  = headers.indexOf("Event count")
+      const dateIdx = headers.indexOf("Date")
+      if (srcIdx !== -1 && cntIdx !== -1) {
+        ga4LeadsData.data.values.slice(1).forEach((row) => {
+          const normalized = normalizeGA4Source(row[srcIdx] || "")
+          if (normalized === "testes") return
+          if (trackedPlatforms.has(normalized)) return
+          if (dateIdx !== -1 && row[dateIdx]) {
+            const d = new Date(row[dateIdx] + "T00:00:00")
+            if (isNaN(d.getTime()) || d < rangeStart || d > rangeEnd) return
+          }
+          extra += parseInt(row[cntIdx] || "0", 10) || 0
+        })
+      }
+    }
+
+    return pixelLeads + extra
+  }, [consolidadoData, ga4LeadsData])
+
+  const calculateWeeklyMetrics = useCallback((data: DataPoint[], startStr: string, endStr: string, isCurrentPeriod = false): WeeklyMetrics => {
     const investment = data.reduce((s, i) => s + (i.totalSpent || 0), 0)
     const impressions = data.reduce((s, i) => s + (i.impressions || 0), 0)
     const clicks = data.reduce((s, i) => s + (i.clicks || 0), 0)
     const videoCompletions = data.reduce((s, i) => s + (i.videoCompletions || 0), 0)
     const views = data.reduce((s, i) => s + (i.videoViews || 0), 0)
+    const leads = (isCurrentPeriod && totalLeadsCruzadoProp != null)
+      ? totalLeadsCruzadoProp
+      : computeLeadsCruzados(startStr, endStr)
     return {
       investment,
       impressions,
       clicks,
       views,
+      leads,
       cpm: impressions > 0 ? (investment / impressions) * 1000 : 0,
       cpc: clicks > 0 ? investment / clicks : 0,
+      cpl: leads > 0 ? investment / leads : 0,
       ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
       vtr: impressions > 0 ? (videoCompletions / impressions) * 100 : 0,
       cpv: views > 0 ? investment / views : 0,
     }
-  }
+  }, [computeLeadsCruzados, totalLeadsCruzadoProp])
 
   const weeklyComparison: WeeklyComparison = useMemo(() => {
-    const current = calculateWeeklyMetrics(getFilteredDataByPeriod(true))
-    const previous = calculateWeeklyMetrics(getFilteredDataByPeriod(false))
+    if (!dateRange.start || !dateRange.end) {
+      const empty: WeeklyMetrics = { investment: 0, impressions: 0, clicks: 0, views: 0, leads: 0, cpm: 0, cpc: 0, cpl: 0, ctr: 0, vtr: 0, cpv: 0 }
+      const zero = { investment: 0, impressions: 0, clicks: 0, views: 0, leads: 0, cpm: 0, cpc: 0, cpl: 0, ctr: 0, vtr: 0, cpv: 0 }
+      return { current: empty, previous: empty, comparison: zero }
+    }
+
+    const startDate = createLocalDate(dateRange.start)
+    const endDate = createLocalDate(dateRange.end)
+    const duration = Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000) + 1
+    const prevStart = new Date(startDate)
+    prevStart.setDate(startDate.getDate() - duration)
+    const prevEnd = new Date(prevStart)
+    prevEnd.setDate(prevStart.getDate() + duration - 1)
+
+    const prevStartStr = prevStart.toISOString().split("T")[0]
+    const prevEndStr   = prevEnd.toISOString().split("T")[0]
+
+    const current = calculateWeeklyMetrics(getFilteredDataByPeriod(true), dateRange.start, dateRange.end, true)
+    const previous = calculateWeeklyMetrics(getFilteredDataByPeriod(false), prevStartStr, prevEndStr, false)
+
     const pct = (cur: number, prev: number) =>
       !prev ? (cur > 0 ? 100 : 0) : ((cur - prev) / prev) * 100
     return {
@@ -226,14 +342,16 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
         impressions: pct(current.impressions, previous.impressions),
         clicks: pct(current.clicks, previous.clicks),
         views: pct(current.views, previous.views),
+        leads: pct(current.leads, previous.leads),
         cpm: pct(current.cpm, previous.cpm),
         cpc: pct(current.cpc, previous.cpc),
+        cpl: pct(current.cpl, previous.cpl),
         ctr: pct(current.ctr, previous.ctr),
         vtr: pct(current.vtr, previous.vtr),
         cpv: pct(current.cpv, previous.cpv),
       },
     }
-  }, [getFilteredDataByPeriod])
+  }, [getFilteredDataByPeriod, calculateWeeklyMetrics, dateRange])
 
   const weeklyChartData: ChartData[] = useMemo(() => {
     const currentData = getFilteredDataByPeriod(true)
@@ -275,7 +393,6 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
         return new Date(2000, mA - 1, dA).getTime() - new Date(2000, mB - 1, dB).getTime()
       })
 
-    // Modo sobreposição: 2+ veículos → período anterior + atual por veículo
     if (selectedVehicles.length >= 2) {
       const result: ChartData[] = []
       for (const vehicle of selectedVehicles) {
@@ -292,7 +409,6 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
       return result
     }
 
-    // Modo padrão: período atual vs anterior
     const currGrouped = groupByDay(currentData)
     const prevGrouped = groupByDay(previousData)
     const result: ChartData[] = []
@@ -313,11 +429,7 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
   const formatCurrency = (v: number) =>
     v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 
-  const formatNumber = (v: number) => {
-    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(".", ",")} mi`
-    if (v >= 1_000) return `${(v / 1_000).toFixed(1).replace(".", ",")} mil`
-    return v.toLocaleString("pt-BR")
-  }
+  const formatNumber = (v: number) => v.toLocaleString("pt-BR")
 
   const formatValue = (v: number, metric = selectedMetric) => {
     if (["cpm", "cpc", "cpv", "investment"].includes(metric)) return formatCurrency(v)
@@ -364,8 +476,6 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
 
   const isOverlapMode = selectedVehicles.length >= 2
 
-  // Em modo sobreposição: período anterior = cor com 50% opacidade, atual = cor sólida
-  // A biblioteca nivo não suporta opacidade por série via prop colors, então usamos hex com alpha
   const hexWithAlpha = (hex: string, alpha: number) => {
     const h = hex.replace("#", "")
     const r = parseInt(h.substring(0, 2), 16)
@@ -445,30 +555,30 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
       delta: weeklyComparison.comparison.views, inverse: false,
     },
     {
-      label: "CPM", icon: <BarChart3 className="w-4 h-4" />,
-      value: formatCurrency(weeklyComparison.current.cpm),
-      sub: `Ant: ${formatCurrency(weeklyComparison.previous.cpm)}`,
-      delta: weeklyComparison.comparison.cpm, inverse: true,
+      label: "Leads", icon: <Users className="w-4 h-4" />,
+      value: formatNumber(weeklyComparison.current.leads),
+      sub: `CPL: ${formatCurrency(weeklyComparison.current.cpl)}`,
+      delta: weeklyComparison.comparison.leads, inverse: false,
     },
   ]
 
   return (
-    <div ref={contentRef} className="space-y-4 flex flex-col max-h-screen overflow-y-auto">
+    <div ref={contentRef} className="space-y-4 w-full overflow-x-hidden">
 
       {/* ── Header ────────────────────────────────────────────────────────── */}
-      <div className="card-overlay rounded-2xl shadow-lg px-5 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <img src="/images/LOGO_JETOUR.png" alt="Jetour" className="h-7 object-contain" />
-          <div>
-            <h1 className="text-lg font-bold text-gray-900 leading-tight">Análise de Período</h1>
-            <p className="text-xs text-gray-500">Comparativo entre períodos</p>
+      <div className="card-overlay rounded-2xl shadow-lg px-4 py-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <img src="/images/LOGO_JETOUR.png" alt="Jetour" className="h-6 object-contain flex-shrink-0" />
+          <div className="min-w-0">
+            <h1 className="text-sm font-bold text-gray-900 leading-tight truncate">Análise de Período</h1>
+            <p className="text-xs text-gray-500 hidden sm:block">Comparativo entre períodos</p>
           </div>
-          {/* Indicador de períodos inline */}
-          <div className="hidden md:flex items-center gap-4 ml-6 pl-6 border-l border-gray-200">
+          {/* Indicador de períodos inline — só desktop */}
+          <div className="hidden lg:flex items-center gap-4 ml-4 pl-4 border-l border-gray-200 flex-shrink-0">
             <div className="text-center">
               <div className="flex items-center gap-1.5 justify-center mb-0.5">
                 <div className="w-2 h-2 rounded-full bg-amber-500" />
-                <span className="text-xs font-semibold text-gray-500">Período Anterior</span>
+                <span className="text-xs font-semibold text-gray-500">Anterior</span>
               </div>
               <p className="text-xs font-bold text-gray-800">
                 {previousPeriod.start && `${previousPeriod.start} — ${previousPeriod.end}`}
@@ -478,7 +588,7 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
             <div className="text-center">
               <div className="flex items-center gap-1.5 justify-center mb-0.5">
                 <div className="w-2 h-2 rounded-full bg-blue-500" />
-                <span className="text-xs font-semibold text-gray-500">Período Atual</span>
+                <span className="text-xs font-semibold text-gray-500">Atual</span>
               </div>
               <p className="text-xs font-bold text-gray-800">
                 {dateRange.start && `${createLocalDate(dateRange.start).toLocaleDateString("pt-BR")} — ${createLocalDate(dateRange.end).toLocaleDateString("pt-BR")}`}
@@ -486,19 +596,19 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <PDFDownloadButton contentRef={contentRef} fileName="analise-de-periodo" />
           <button
             onClick={onBack}
-            className="px-3 py-1.5 border border-slate-400 text-slate-600 rounded-xl hover:bg-slate-50 text-xs font-medium transition-colors"
+            className="px-2.5 py-1.5 border border-slate-400 text-slate-600 rounded-xl hover:bg-slate-50 text-xs font-medium transition-colors whitespace-nowrap"
           >
-            ← Linha do Tempo
+            ← <span className="hidden sm:inline">Linha do Tempo</span><span className="sm:hidden">Voltar</span>
           </button>
         </div>
       </div>
 
       {/* ── Cards de métricas ─────────────────────────────────────────────── */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {metricCards.map((card) => (
           <div key={card.label} className="card-overlay rounded-2xl shadow p-3">
             <div className="flex items-center justify-between mb-2">
@@ -511,15 +621,26 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
               </div>
             </div>
             <p className="text-xs text-gray-500 font-medium">{card.label}</p>
-            <p className="text-base font-bold text-gray-900 truncate">{card.value}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{card.sub}</p>
+            <p className="text-sm font-bold text-gray-900 truncate">{card.value}</p>
+            <p className="text-xs text-gray-400 mt-0.5 truncate">{card.sub}</p>
           </div>
         ))}
       </div>
 
       {/* ── Filtros ───────────────────────────────────────────────────────── */}
       <div className="card-overlay rounded-2xl shadow-lg p-4">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Cabeçalho do collapse (mobile) */}
+        <button
+          className="lg:hidden w-full flex items-center justify-between mb-1"
+          onClick={() => setFiltersOpen((o) => !o)}
+        >
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+            <Filter className="w-3.5 h-3.5" /> Filtros
+          </span>
+          {filtersOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+        </button>
+
+        <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 ${filtersOpen ? "mt-3" : "hidden lg:grid"}`}>
 
           {/* Campanha */}
           <div>
@@ -556,7 +677,7 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
             </div>
           </div>
 
-          {/* Veículos com ícones */}
+          {/* Veículos */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1">
               <Filter className="w-3.5 h-3.5" /> Veículos
@@ -588,10 +709,10 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
       </div>
 
       {/* ── Gráfico + seletor de métrica ──────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4" style={{ height: "380px" }}>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 lg:h-[380px]">
 
         {/* Gráfico */}
-        <div className="lg:col-span-3 card-overlay rounded-2xl shadow-lg p-4 flex flex-col h-full">
+        <div className="lg:col-span-3 card-overlay rounded-2xl shadow-lg p-4 flex flex-col h-[360px] lg:h-full">
           <h3 className="text-sm font-bold text-gray-800 mb-2">
             {isOverlapMode
               ? `Sobreposição por Veículo — ${selectedMetric === "views" ? "Visualizações" : selectedMetric.toUpperCase()}`
@@ -602,7 +723,7 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
               <ResponsiveLine
                 key={`${isOverlapMode ? "overlap" : "default"}-${weeklyChartData.length}`}
                 data={weeklyChartData}
-                margin={{ top: 20, right: 30, bottom: 55, left: 75 }}
+                margin={{ top: 20, right: isMobile ? 10 : 30, bottom: 55, left: isMobile ? 45 : 75 }}
                 xScale={{ type: "point" }}
                 yScale={getChartScale()}
                 curve="monotoneX"
@@ -698,7 +819,7 @@ const AnaliseSemanal: React.FC<AnaliseSemanalProps> = ({
         </div>
 
         {/* Seletor de métrica + resumo */}
-        <div className="card-overlay rounded-2xl shadow-lg p-4 flex flex-col h-full overflow-y-auto">
+        <div className="card-overlay rounded-2xl shadow-lg p-4 flex flex-col lg:h-full overflow-y-auto">
           <p className="text-xs font-bold text-gray-700 mb-2">Selecionar Métrica</p>
           <div className="space-y-1.5 flex-1">
             {([

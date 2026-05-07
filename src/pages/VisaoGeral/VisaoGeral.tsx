@@ -5,7 +5,7 @@ import { useState, useMemo } from "react"
 import { Calendar, Filter, DollarSign, Eye, MousePointer, TrendingUp, Users, BarChart3, Play, Search } from "lucide-react"
 import Loading from "../../components/Loading/Loading"
 import { useData } from "../../contexts/DataContext"
-import { parseBrazilianCurrency, parseBrazilianNumber, useGoogleSearchData, useGA4Leads } from "../../services/consolidadoApi"
+import { parseBrazilianCurrency, parseBrazilianNumber, useGA4Leads } from "../../services/consolidadoApi"
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -142,13 +142,22 @@ const HBar: React.FC<{ data: ChartPoint[]; format?: (v: number) => string }> = (
   )
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
-const parseN = (v: string) => parseFloat((v || "").replace(/[R$\s.]/g, "").replace(",", ".")) || 0
-const parseI = (v: string) => parseInt((v || "").replace(/[.\s]/g, "").replace(",", "")) || 0
+// ── Normaliza fonte GA4 para nome de plataforma do consolidado ────────────────
+const normalizeGA4Source = (src: string): string => {
+  const s = src.toLowerCase()
+  if (["ig", "l.instagram.com", "instagram.com", "instagram"].includes(s)) return "instagram"
+  if (["fb", "l.facebook.com", "m.facebook.com", "facebook.com", "meta", "facebook"].includes(s)) return "meta"
+  if (["google", "google ads", "cpc"].includes(s)) return "google"
+  if (s === "linkedin-traf" || s === "linkedin") return "linkedin"
+  if (s === "kwai.com" || s === "kwai") return "kwai"
+  if (s === "ads.tiktok.com" || s === "tiktok") return "tiktok"
+  if (["tagassistant.google.com", "gtm_teste"].includes(s)) return "testes"
+  return s
+}
 
+// ── Main component ────────────────────────────────────────────────────────────
 const VisaoGeral: React.FC = () => {
   const { data: apiData, campaigns, loading, error } = useData()
-  const { data: gsApiData } = useGoogleSearchData()
   const { data: ga4LeadsData } = useGA4Leads()
 
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: "", end: "" })
@@ -252,136 +261,98 @@ const VisaoGeral: React.FC = () => {
     return Object.values(map).sort((a, b) => b.impressions - a.impressions)
   }, [filtered])
 
-  // ── Google Search metrics ───────────────────────────────────────────────────
-  const gsMetrics = useMemo<PlatformMetrics | null>(() => {
-    if (!gsApiData?.success || !gsApiData?.data?.values || gsApiData.data.values.length < 2) return null
-    const headers = gsApiData.data.values[0]
-    const rows = gsApiData.data.values.slice(1)
-    const clicksIdx = headers.indexOf("Clicks")
-    const impIdx    = headers.indexOf("Impressions")
-    const costIdx   = headers.indexOf("Cost (Spend)")
+  const availablePlatforms = useMemo(() =>
+    Array.from(new Set(allRows.map((r) => r.platform))).sort()
+  , [allRows])
 
-    let clicks = 0, impressions = 0, cost = 0
-    rows.forEach((row: string[]) => {
-      clicks      += parseI(row[clicksIdx] || "0")
-      impressions += parseI(row[impIdx]    || "0")
-      cost        += parseN(row[costIdx]   || "0")
-    })
-
-    if (impressions === 0 && clicks === 0 && cost === 0) return null
-    return {
-      platform: "Google Search",
-      impressions, cost, clicks,
-      videoPlays: 0, videoCompletions: 0,
-      leads: 0, engagements: 0,
-      color: "#34A853",
-    }
-  }, [gsApiData])
-
-  // Merge Google Search into platform list (respects selectedPlatforms filter)
-  const gsIncluded = selectedPlatforms.length === 0 || selectedPlatforms.includes("Google Search")
-
-  const availablePlatforms = useMemo(() => {
-    const platforms = Array.from(new Set(allRows.map((r) => r.platform)))
-    if (gsMetrics) platforms.push("Google Search")
-    return platforms.sort()
-  }, [allRows, gsMetrics])
-
-  // ── Totals (includes Google Search when applicable) ─────────────────────────
+  // ── Totals ──────────────────────────────────────────────────────────────────
   const totals = useMemo(() => {
-    let investment  = filtered.reduce((s, r) => s + r.cost, 0)
-    let impressions = filtered.reduce((s, r) => s + r.impressions, 0)
-    let clicks      = filtered.reduce((s, r) => s + r.clicks, 0)
+    const investment  = filtered.reduce((s, r) => s + r.cost, 0)
+    const impressions = filtered.reduce((s, r) => s + r.impressions, 0)
+    const clicks      = filtered.reduce((s, r) => s + r.clicks, 0)
     const videoPlays  = filtered.reduce((s, r) => s + r.videoPlays, 0)
     const videoComp   = filtered.reduce((s, r) => s + r.videoCompletions, 0)
     const leads       = filtered.reduce((s, r) => s + r.leads, 0)
     const engagements = filtered.reduce((s, r) => s + r.engagements, 0)
-
-    if (gsMetrics && gsIncluded) {
-      investment  += gsMetrics.cost
-      impressions += gsMetrics.impressions
-      clicks      += gsMetrics.clicks
-    }
-
     const cpm  = impressions > 0 ? investment / (impressions / 1000) : 0
     const cpc  = clicks > 0 ? investment / clicks : 0
     const cpl  = leads > 0 ? investment / leads : 0
     const ctr  = impressions > 0 ? (clicks / impressions) * 100 : 0
     const vtr  = videoPlays > 0 ? (videoComp / videoPlays) * 100 : 0
     const cpv  = videoComp > 0 ? investment / videoComp : 0
-
     return { investment, impressions, clicks, videoPlays, videoComp, leads, engagements, cpm, cpc, cpl, ctr, vtr, cpv }
-  }, [filtered, gsMetrics, gsIncluded])
+  }, [filtered])
 
-  const allPlatformMetrics = useMemo<PlatformMetrics[]>(() => {
-    if (!gsMetrics || !gsIncluded) return platformMetrics
-    const existing = platformMetrics.find((m) => m.platform === "Google Search")
-    if (existing) return platformMetrics
-    return [...platformMetrics, gsMetrics].sort((a, b) => b.impressions - a.impressions)
-  }, [platformMetrics, gsMetrics, gsIncluded])
-
-  const mkChart = (key: keyof PlatformMetrics): ChartPoint[] =>
-    allPlatformMetrics.map((m) => ({ platform: m.platform, value: m[key] as number, color: m.color }))
-
-  // ── Leads cruzados: consolidado + GA4 Leads por source ────────────────────
-  const leadsChartData = useMemo((): ChartPoint[] => {
-    const normalizeSource = (src: string): string => {
-      const s = src.toLowerCase()
-      if (["ig", "l.instagram.com", "instagram.com", "instagram"].includes(s)) return "Instagram"
-      if (["fb", "l.facebook.com", "m.facebook.com", "facebook.com", "meta", "facebook"].includes(s)) return "Meta"
-      if (["google", "google ads"].includes(s)) return "Google Ads"
-      if (s === "linkedin-traf" || s === "linkedin") return "Linkedin"
-      if (s === "kwai.com" || s === "kwai") return "Kwai"
-      if (s === "ads.tiktok.com" || s === "tiktok") return "TikTok"
-      if (["tagassistant.google.com", "gtm_teste"].includes(s)) return "Testes"
-      if (s === "(direct)") return "Direto"
-      if (s === "organic") return "Google Orgânico"
-      return src
-    }
-
-    const colorMap: Record<string, string> = {
-      "Meta": "#1877F2",
-      "Instagram": "#E1306C",
-      "TikTok": "#010101",
-      "Google Ads": "#4285F4",
-      "Google Search": "#34A853",
-      "Linkedin": "#0A66C2",
-      "Kwai": "#FF6900",
-      "Direto": "#6b7280",
-      "Google Orgânico": "#34A853",
-    }
-
-    // 1) Base: leads do consolidado (pixel data — Meta, TikTok, Google Ads, etc.)
-    const map = new Map<string, { leads: number; color: string }>()
-    allPlatformMetrics.forEach((m) => {
-      if (m.leads > 0) map.set(m.platform, { leads: m.leads, color: m.color })
+  // ── Leads cruzados por plataforma (mesma lógica da Capa) ──────────────────
+  // Pixel do consolidado por veículo + GA4 extras para fontes não cobertas
+  const leadsByPlatform = useMemo((): Map<string, number> => {
+    // 1) Soma leads do pixel por plataforma e registra quais estão cobertas
+    const pixelMap = new Map<string, number>()
+    const trackedNorm = new Set<string>() // nomes normalizados já cobertos pelo pixel
+    platformMetrics.forEach((m) => {
+      if (m.leads > 0) {
+        pixelMap.set(m.platform, m.leads)
+        trackedNorm.add(m.platform.trim().toLowerCase())
+      }
     })
 
-    // 2) GA4 Leads — adiciona fontes que não existem no consolidado
+    // 2) GA4: adiciona leads de fontes não cobertas pelo pixel
     if (ga4LeadsData?.success && ga4LeadsData?.data?.values && ga4LeadsData.data.values.length > 1) {
       const headers = ga4LeadsData.data.values[0]
       const srcIdx = headers.indexOf("Session source")
       const cntIdx = headers.indexOf("Event count")
-      ga4LeadsData.data.values.slice(1).forEach((row: string[]) => {
-        const src = row[srcIdx] || ""
-        const cnt = parseInt(row[cntIdx] || "0", 10) || 0
-        if (!src || cnt === 0) return
-        const platform = normalizeSource(src)
-        if (platform === "Testes") return
-        // Só adiciona fontes novas — para as que já estão no consolidado, mantém o pixel
-        if (!map.has(platform)) {
-          map.set(platform, { leads: cnt, color: colorMap[platform] || "#94a3b8" })
-        }
-      })
+      if (srcIdx !== -1 && cntIdx !== -1) {
+        ga4LeadsData.data.values.slice(1).forEach((row: string[]) => {
+          const normalized = normalizeGA4Source(row[srcIdx] || "")
+          if (normalized === "testes") return
+          if (trackedNorm.has(normalized)) return
+          const cnt = parseInt(row[cntIdx] || "0", 10) || 0
+          if (cnt === 0) return
+          // Mapeia nome normalizado para nome de exibição
+          const displayMap: Record<string, string> = {
+            instagram: "Instagram", meta: "Meta", google: "Google",
+            linkedin: "LinkedIn", kwai: "Kwai", tiktok: "TikTok",
+          }
+          const display = displayMap[normalized] || normalized
+          pixelMap.set(display, (pixelMap.get(display) || 0) + cnt)
+        })
+      }
     }
 
-    return Array.from(map.entries())
-      .map(([platform, { leads, color }]) => ({ platform, value: leads, color }))
+    return pixelMap
+  }, [platformMetrics, ga4LeadsData])
+
+  const totalLeadsCruzado = useMemo(() =>
+    Array.from(leadsByPlatform.values()).reduce((s, v) => s + v, 0)
+  , [leadsByPlatform])
+
+  // Injeta leads cruzados em cada plataforma para a tabela
+  const allPlatformMetrics = useMemo<PlatformMetrics[]>(() =>
+    platformMetrics.map((m) => ({
+      ...m,
+      leads: leadsByPlatform.get(m.platform) ?? m.leads,
+    }))
+  , [platformMetrics, leadsByPlatform])
+
+  const mkChart = (key: keyof PlatformMetrics): ChartPoint[] =>
+    allPlatformMetrics.map((m) => ({ platform: m.platform, value: m[key] as number, color: m.color }))
+
+  // Gráfico de leads: todas as entradas do cruzamento (inclui fontes GA4 extras)
+  const leadsChartData = useMemo((): ChartPoint[] => {
+    const colorMap: Record<string, string> = {
+      Meta: "#0668E1", Instagram: "#E1306C", TikTok: "#010101",
+      Google: "#4285F4", "Google Search": "#34A853", LinkedIn: "#0077b5",
+      Kwai: "#FF6900",
+    }
+    return Array.from(leadsByPlatform.entries())
+      .map(([platform, leads]) => ({
+        platform,
+        value: leads,
+        color: colorMap[platform] ?? platformColor(platform),
+      }))
       .filter((d) => d.value > 0)
       .sort((a, b) => b.value - a.value)
-  }, [allPlatformMetrics, ga4LeadsData])
-
-  const ga4LeadsTotal = useMemo(() => leadsChartData.reduce((s, d) => s + d.value, 0), [leadsChartData])
+  }, [leadsByPlatform])
 
   if (loading) return <Loading message="Carregando visão geral..." />
   if (error) return (
@@ -408,14 +379,14 @@ const VisaoGeral: React.FC = () => {
       {/* ── Big numbers ──────────────────────────────────────────────────── */}
       <div className="grid grid-cols-4 lg:grid-cols-8 gap-3">
         {[
-          { label: "Investimento",  value: `R$ ${fmt(totals.investment)}`,          icon: <DollarSign className="w-4 h-4" /> },
-          { label: "Impressões",    value: fmt(totals.impressions),                  icon: <Eye className="w-4 h-4" /> },
-          { label: "Cliques",       value: fmt(totals.clicks),                       icon: <MousePointer className="w-4 h-4" /> },
-          { label: "Visualizações",        value: fmt(totals.videoPlays),                   icon: <Play className="w-4 h-4" /> },
-          { label: "Leads",         value: fmt(ga4LeadsTotal), icon: <Users className="w-4 h-4" /> },
-          { label: "CPM",           value: fmtCurrency(totals.cpm),                  icon: <TrendingUp className="w-4 h-4" /> },
-          { label: "CTR",           value: fmtPct(totals.ctr),                       icon: <BarChart3 className="w-4 h-4" /> },
-          { label: "CPL",           value: totals.leads > 0 ? fmtCurrency(totals.cpl) : "—", icon: <Users className="w-4 h-4" /> },
+          { label: "Investimento",  value: fmtCurrency(totals.investment),                               icon: <DollarSign className="w-4 h-4" /> },
+          { label: "Impressões",    value: totals.impressions.toLocaleString("pt-BR"),                    icon: <Eye className="w-4 h-4" /> },
+          { label: "Cliques",       value: totals.clicks.toLocaleString("pt-BR"),                        icon: <MousePointer className="w-4 h-4" /> },
+          { label: "Visualizações", value: totals.videoPlays.toLocaleString("pt-BR"),                    icon: <Play className="w-4 h-4" /> },
+          { label: "Leads",         value: totalLeadsCruzado.toLocaleString("pt-BR"),                   icon: <Users className="w-4 h-4" /> },
+          { label: "CPM",           value: fmtCurrency(totals.cpm),                                      icon: <TrendingUp className="w-4 h-4" /> },
+          { label: "CTR",           value: fmtPct(totals.ctr),                                           icon: <BarChart3 className="w-4 h-4" /> },
+          { label: "CPL",           value: totalLeadsCruzado > 0 ? fmtCurrency(totals.investment / totalLeadsCruzado) : "—", icon: <Users className="w-4 h-4" /> },
         ].map((card) => (
           <div key={card.label} className="bg-slate-700/80 rounded-2xl px-3 py-3 flex flex-col gap-1 text-white">
             <div className="flex items-center gap-1.5 text-slate-300 text-xs">
@@ -617,10 +588,10 @@ const VisaoGeral: React.FC = () => {
                     </div>
                   </td>
                   <td className="py-2.5 px-3 text-right font-semibold text-gray-800">{fmtCurrency(m.cost)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-700">{fmt(m.impressions)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-700">{fmt(m.clicks)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-700">{fmt(m.videoPlays)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-700">{fmt(m.leads)}</td>
+                  <td className="py-2.5 px-3 text-right text-gray-700">{m.impressions.toLocaleString("pt-BR")}</td>
+                  <td className="py-2.5 px-3 text-right text-gray-700">{m.clicks.toLocaleString("pt-BR")}</td>
+                  <td className="py-2.5 px-3 text-right text-gray-700">{m.videoPlays.toLocaleString("pt-BR")}</td>
+                  <td className="py-2.5 px-3 text-right text-gray-700">{m.leads.toLocaleString("pt-BR")}</td>
                   <td className="py-2.5 px-3 text-right text-gray-700">{fmtCurrency(m.impressions > 0 ? m.cost / (m.impressions / 1000) : 0)}</td>
                   <td className="py-2.5 px-3 text-right text-gray-700">{fmtPct(m.impressions > 0 ? (m.clicks / m.impressions) * 100 : 0)}</td>
                   <td className="py-2.5 px-3 text-right text-gray-700">{m.clicks > 0 ? fmtCurrency(m.cost / m.clicks) : "—"}</td>
@@ -632,10 +603,10 @@ const VisaoGeral: React.FC = () => {
                   <td className="py-2.5 px-3" />
                   <td className="py-2.5 px-3 text-gray-800">Total</td>
                   <td className="py-2.5 px-3 text-right text-gray-900">{fmtCurrency(totals.investment)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-900">{fmt(totals.impressions)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-900">{fmt(totals.clicks)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-900">{fmt(totals.videoPlays)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-900">{fmt(totals.leads)}</td>
+                  <td className="py-2.5 px-3 text-right text-gray-900">{totals.impressions.toLocaleString("pt-BR")}</td>
+                  <td className="py-2.5 px-3 text-right text-gray-900">{totals.clicks.toLocaleString("pt-BR")}</td>
+                  <td className="py-2.5 px-3 text-right text-gray-900">{totals.videoPlays.toLocaleString("pt-BR")}</td>
+                  <td className="py-2.5 px-3 text-right text-gray-900">{totalLeadsCruzado.toLocaleString("pt-BR")}</td>
                   <td className="py-2.5 px-3 text-right text-gray-900">{fmtCurrency(totals.cpm)}</td>
                   <td className="py-2.5 px-3 text-right text-gray-900">{fmtPct(totals.ctr)}</td>
                   <td className="py-2.5 px-3 text-right text-gray-900">{totals.clicks > 0 ? fmtCurrency(totals.cpc) : "—"}</td>

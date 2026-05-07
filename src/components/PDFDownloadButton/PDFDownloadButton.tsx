@@ -80,11 +80,11 @@ const PDFDownloadButton: React.FC<PDFDownloadButtonProps> = ({ contentRef, fileN
   return (
     <button
       onClick={handleDownload}
-      className="flex items-center space-x-1 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+      className="flex items-center gap-1 px-2.5 py-1.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-colors text-xs font-medium"
       title="Baixar PDF"
     >
-      <Download className="w-4 h-4" />
-      <span className="text-sm font-medium">PDF</span>
+      <Download className="w-3.5 h-3.5" />
+      <span>PDF</span>
     </button>
   )
 }

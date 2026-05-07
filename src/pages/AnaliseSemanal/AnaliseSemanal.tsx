@@ -3,6 +3,7 @@
 import type React from "react"
 import { useState, useEffect, useMemo } from "react"
 import { useData } from "../../contexts/DataContext"
+import { useGA4Leads } from "../../services/consolidadoApi"
 import Loading from "../../components/Loading/Loading"
 import AnaliseSemanalComponent from "../LinhaTempo/components/AnaliseSemanal"
 
@@ -21,12 +22,14 @@ interface DataPoint {
   videoViews75: number
   videoCompletions: number
   totalEngagements: number
+  leads: number
   veiculo: string
   tipoCompra: string
 }
 
 const AnaliseSemanal: React.FC = () => {
   const { data: apiData, campaigns, loading, error } = useData()
+  const { data: ga4LeadsData } = useGA4Leads()
   const [processedData, setProcessedData] = useState<DataPoint[]>([])
 
   // Cores para as plataformas
@@ -95,6 +98,7 @@ const AnaliseSemanal: React.FC = () => {
       const videoViews75Index = headers.indexOf("Video views at 75%")
       const videoCompletionsIndex = headers.indexOf("Video completions")
       const totalEngagementsIndex = headers.indexOf("Total engagements")
+      const leadsIndex = headers.indexOf("Leads")
       const veiculoIndex = headers.indexOf("Veículo")
       const tipoCompraIndex = headers.indexOf("Tipo de Compra")
 
@@ -137,6 +141,7 @@ const AnaliseSemanal: React.FC = () => {
             videoViews75: parseInteger(row[videoViews75Index]),
             videoCompletions: parseInteger(row[videoCompletionsIndex]),
             totalEngagements: parseInteger(row[totalEngagementsIndex]),
+            leads: leadsIndex !== -1 ? parseInteger(row[leadsIndex]) : 0,
             tipoCompra: row[tipoCompraIndex] || "",
           }
         })
@@ -151,6 +156,44 @@ const AnaliseSemanal: React.FC = () => {
     const vehicles = new Set(processedData.map((item) => item.platform))
     return Array.from(vehicles).sort()
   }, [processedData])
+
+  // Total de leads cruzado (consolidado + GA4 extras) — mesma lógica da LinhaTempo
+  const totalLeadsCruzado = useMemo(() => {
+    const trackedPlatforms = new Set<string>()
+    const pixelLeads = processedData.reduce((acc, i) => {
+      if (i.leads > 0 && i.veiculo) trackedPlatforms.add(i.veiculo.trim().toLowerCase())
+      return acc + i.leads
+    }, 0)
+
+    const normalizeSource = (src: string): string => {
+      const s = src.toLowerCase()
+      if (["ig", "l.instagram.com", "instagram.com", "instagram"].includes(s)) return "instagram"
+      if (["fb", "l.facebook.com", "m.facebook.com", "facebook.com", "meta", "facebook"].includes(s)) return "meta"
+      if (["google", "google ads", "cpc"].includes(s)) return "google"
+      if (s === "linkedin-traf" || s === "linkedin") return "linkedin"
+      if (s === "kwai.com" || s === "kwai") return "kwai"
+      if (s === "ads.tiktok.com" || s === "tiktok") return "tiktok"
+      if (["tagassistant.google.com", "gtm_teste"].includes(s)) return "testes"
+      return s
+    }
+
+    let extra = 0
+    if (ga4LeadsData?.success && ga4LeadsData?.data?.values && ga4LeadsData.data.values.length > 1) {
+      const headers = ga4LeadsData.data.values[0]
+      const srcIdx = headers.indexOf("Session source")
+      const cntIdx = headers.indexOf("Event count")
+      if (srcIdx !== -1 && cntIdx !== -1) {
+        ga4LeadsData.data.values.slice(1).forEach((row) => {
+          const normalized = normalizeSource(row[srcIdx] || "")
+          if (normalized === "testes") return
+          if (trackedPlatforms.has(normalized)) return
+          extra += parseInt(row[cntIdx] || "0", 10) || 0
+        })
+      }
+    }
+
+    return pixelLeads + extra
+  }, [processedData, ga4LeadsData])
 
   if (loading) {
     return <Loading />
@@ -175,6 +218,9 @@ const AnaliseSemanal: React.FC = () => {
         platformColors={platformColors}
         onBack={() => window.history.back()}
         campaigns={campaigns}
+        ga4LeadsData={ga4LeadsData}
+        consolidadoData={apiData}
+        totalLeadsCruzado={totalLeadsCruzado}
       />
     </div>
   )

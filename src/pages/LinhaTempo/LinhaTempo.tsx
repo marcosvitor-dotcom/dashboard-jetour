@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useRef } from "react"
 import { ResponsiveLine } from "@nivo/line"
 import { Calendar, Filter, TrendingUp, Play, Info, DollarSign, MousePointer, Eye, BarChart3, Users, Search } from "lucide-react"
 import { useData } from "../../contexts/DataContext"
-import { useGoogleSearchData } from "../../services/consolidadoApi"
+import { useGoogleSearchData, useGA4Leads } from "../../services/consolidadoApi"
 import Loading from "../../components/Loading/Loading"
 import PDFDownloadButton from "../../components/PDFDownloadButton/PDFDownloadButton"
 import AnaliseSemanal from "./components/AnaliseSemanal"
@@ -101,12 +101,14 @@ const LinhaTempo: React.FC = () => {
   const contentRef = useRef<HTMLDivElement>(null)
   const { data, campaigns, loading, error } = useData()
   const { data: gsApiData } = useGoogleSearchData()
+  const { data: ga4LeadsData } = useGA4Leads()
   const [processedData, setProcessedData] = useState<DataPoint[]>([])
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: "", end: "" })
   const [selectedVehicles, setSelectedVehicles] = useState<string[]>([])
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null)
   const [availableVehicles, setAvailableVehicles] = useState<string[]>([])
   const [isWeeklyAnalysis, setIsWeeklyAnalysis] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [filteredData, setFilteredData] = useState<DataPoint[]>([])
   const [selectedMetric, setSelectedMetric] = useState<
     "impressions" | "clicks" | "totalSpent" | "videoViews" | "leads" | "cpm" | "cpc" | "ctr" | "vtr"
@@ -393,6 +395,50 @@ const LinhaTempo: React.FC = () => {
     return { spent, impressions, clicks, videoViews, leads, engagements, cpm, ctr, cpl }
   }, [filteredData])
 
+  // ── Leads cruzados: consolidado + extras GA4 (fontes não cobertas pelo pixel)
+  const totalLeadsCruzado = useMemo(() => {
+    const rangeStart = dateRange.start ? new Date(dateRange.start + "T00:00:00") : null
+    const rangeEnd   = dateRange.end   ? new Date(dateRange.end   + "T00:00:00") : null
+
+    // Plataformas já cobertas pelo pixel no consolidado filtrado
+    const trackedPlatforms = new Set<string>()
+    filteredData.forEach((i) => {
+      if (i.leads > 0 && i.veiculo) trackedPlatforms.add(i.veiculo.trim().toLowerCase())
+    })
+
+    const normalizeSource = (src: string): string => {
+      const s = src.toLowerCase()
+      if (["ig", "l.instagram.com", "instagram.com", "instagram"].includes(s)) return "instagram"
+      if (["fb", "l.facebook.com", "m.facebook.com", "facebook.com", "meta", "facebook"].includes(s)) return "meta"
+      if (["google", "google ads", "cpc"].includes(s)) return "google"
+      if (s === "linkedin-traf" || s === "linkedin") return "linkedin"
+      if (s === "kwai.com" || s === "kwai") return "kwai"
+      if (s === "ads.tiktok.com" || s === "tiktok") return "tiktok"
+      if (["tagassistant.google.com", "gtm_teste"].includes(s)) return "testes"
+      return s
+    }
+
+    let extra = 0
+    if (ga4LeadsData?.success && ga4LeadsData?.data?.values && ga4LeadsData.data.values.length > 1) {
+      const headers = ga4LeadsData.data.values[0]
+      const srcIdx  = headers.indexOf("Session source")
+      const cntIdx  = headers.indexOf("Event count")
+      const dateIdx = headers.indexOf("Date")
+      ga4LeadsData.data.values.slice(1).forEach((row) => {
+        const normalized = normalizeSource(row[srcIdx] || "")
+        if (normalized === "testes") return
+        if (trackedPlatforms.has(normalized)) return
+        if (rangeStart && rangeEnd && dateIdx !== -1 && row[dateIdx]) {
+          const d = new Date(row[dateIdx] + "T00:00:00")
+          if (isNaN(d.getTime()) || d < rangeStart || d > rangeEnd) return
+        }
+        extra += parseInt(row[cntIdx] || "0", 10) || 0
+      })
+    }
+
+    return totals.leads + extra
+  }, [filteredData, ga4LeadsData, totals.leads, dateRange])
+
   const formatCurrency = (v: number) =>
     v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 
@@ -435,20 +481,23 @@ const LinhaTempo: React.FC = () => {
 
   if (isWeeklyAnalysis) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 w-full overflow-x-hidden">
         <AnaliseSemanal
           processedData={processedData}
           availableVehicles={availableVehicles}
           platformColors={platformColors}
           campaigns={campaigns}
           onBack={() => setIsWeeklyAnalysis(false)}
+          ga4LeadsData={ga4LeadsData}
+          consolidadoData={data}
+          totalLeadsCruzado={totalLeadsCruzado}
         />
       </div>
     )
   }
 
   return (
-    <div ref={contentRef} className="space-y-4 flex flex-col max-h-screen overflow-y-auto">
+    <div ref={contentRef} className="space-y-4">
 
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <div className="relative overflow-hidden rounded-2xl shadow-2xl h-36">
@@ -458,18 +507,19 @@ const LinhaTempo: React.FC = () => {
         </video>
         <div className="absolute inset-0 bg-black/40" />
         <div className="absolute bottom-0 left-0 right-0 p-3">
-          <div className="bg-white/95 backdrop-blur-sm rounded-xl px-4 py-3 shadow-lg flex items-center gap-4 max-w-2xl">
-            <img src="/images/LOGO_JETOUR.png" alt="Jetour" className="h-7 object-contain" />
-            <div>
-              <h1 className="text-xl font-bold text-gray-900 leading-tight">Linha do Tempo</h1>
-              <p className="text-xs text-gray-500">Evolução de métricas por período</p>
+          <div className="bg-white/95 backdrop-blur-sm rounded-xl px-3 py-2.5 shadow-lg flex items-center gap-3">
+            <img src="/images/LOGO_JETOUR.png" alt="Jetour" className="h-6 object-contain flex-shrink-0" />
+            <div className="min-w-0">
+              <h1 className="text-base font-bold text-gray-900 leading-tight">Linha do Tempo</h1>
+              <p className="text-xs text-gray-500 hidden sm:block">Evolução de métricas por período</p>
             </div>
-            <div className="ml-auto flex gap-2">
+            <div className="ml-auto flex gap-1.5 flex-shrink-0">
               <button
                 onClick={() => setIsWeeklyAnalysis(true)}
-                className="px-3 py-1.5 border border-blue-500 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors text-xs font-medium"
+                className="px-2 py-1.5 border border-blue-500 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors text-xs font-medium whitespace-nowrap"
               >
-                Análise Semanal
+                <span className="hidden sm:inline">Análise Semanal</span>
+                <span className="sm:hidden">Semanal</span>
               </button>
               <PDFDownloadButton contentRef={contentRef} fileName="linha-tempo" />
             </div>
@@ -484,11 +534,11 @@ const LinhaTempo: React.FC = () => {
           { label: "Impressões",   value: formatNumber(totals.impressions) },
           { label: "Cliques",      value: formatNumber(totals.clicks) },
           { label: "Visualizações",       value: formatNumber(totals.videoViews) },
-          { label: "Leads",        value: formatNumber(totals.leads) },
+          { label: "Leads",        value: formatNumber(totalLeadsCruzado) },
           { label: "Engajamentos", value: formatNumber(totals.engagements) },
           { label: "CPM",          value: formatCurrency(totals.cpm) },
           { label: "CTR",          value: `${totals.ctr.toFixed(2)}%` },
-          { label: "CPL",          value: totals.leads > 0 ? formatCurrency(totals.cpl) : "—" },
+          { label: "CPL",          value: totalLeadsCruzado > 0 ? formatCurrency(totals.spent / totalLeadsCruzado) : "—" },
         ].map((item) => (
           <div key={item.label} className="bg-slate-700/80 rounded-2xl p-2 text-center shadow-sm">
             <p className="text-xs text-slate-300 font-medium leading-tight">{item.label}</p>
@@ -497,8 +547,26 @@ const LinhaTempo: React.FC = () => {
         ))}
       </div>
 
-      {/* ── Filtros ───────────────────────────────────────────────────────── */}
-      <div className="card-overlay rounded-2xl shadow-lg p-4">
+      {/* ── Filtros (collapse em mobile) ──────────────────────────────────── */}
+      <div className="card-overlay rounded-2xl shadow-lg overflow-hidden">
+        {/* Cabeçalho clicável */}
+        <button
+          onClick={() => setFiltersOpen((v) => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 lg:hidden"
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+            <Filter className="w-4 h-4" /> Filtros
+            {(selectedCampaign || selectedVehicles.length > 0) && (
+              <span className="bg-blue-500 text-white text-xs rounded-full px-1.5 py-0.5 leading-none">
+                {(selectedCampaign ? 1 : 0) + selectedVehicles.length}
+              </span>
+            )}
+          </span>
+          <svg className={`w-4 h-4 text-gray-400 transition-transform ${filtersOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        <div className={`p-4 lg:block ${filtersOpen ? "block" : "hidden"}`}>
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
 
           {/* Campanha */}
@@ -599,13 +667,14 @@ const LinhaTempo: React.FC = () => {
             </div>
           </div>
         </div>
+        </div>
       </div>
 
       {/* ── Gráfico + Entrada de Veículos ─────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4" style={{ height: "440px" }}>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 lg:h-[440px]">
 
         {/* Gráfico */}
-        <div className="lg:col-span-3 card-overlay rounded-2xl shadow-lg p-4 flex flex-col h-full">
+        <div className="lg:col-span-3 card-overlay rounded-2xl shadow-lg p-4 flex flex-col h-[360px] lg:h-full">
           <h3 className="text-sm font-bold text-gray-800 mb-2">
             Evolução — {selectedMetric === "totalSpent" ? "Investimento" : selectedMetric.charAt(0).toUpperCase() + selectedMetric.slice(1)}
           </h3>
@@ -701,7 +770,7 @@ const LinhaTempo: React.FC = () => {
         </div>
 
         {/* Entrada de Veículos — com ícones */}
-        <div className="card-overlay rounded-2xl shadow-lg p-4 flex flex-col h-full">
+        <div className="card-overlay rounded-2xl shadow-lg p-4 flex flex-col lg:h-full">
           <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2 flex-shrink-0">
             <Info className="w-4 h-4" /> Entrada de Veículos
           </h3>
