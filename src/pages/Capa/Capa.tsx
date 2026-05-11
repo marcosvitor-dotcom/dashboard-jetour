@@ -14,7 +14,8 @@ import {
   Globe,
   Search,
 } from "lucide-react"
-import { useConsolidadoGeral, parseBrazilianCurrency, parseBrazilianNumber, useGA4, useGoogleSearchData, useGA4Leads } from "../../services/consolidadoApi"
+import { parseBrazilianCurrency, parseBrazilianNumber } from "../../services/consolidadoApi"
+import { useData } from "../../contexts/DataContext"
 import Loading from "../../components/Loading/Loading"
 import CapaAIInsight from "../../components/CapaAIInsight/CapaAIInsight"
 
@@ -25,13 +26,13 @@ const Capa: React.FC = () => {
   const {
     campaigns,
     last7Days,
-    loading,
+    loadingConsolidado: loading,
     error,
     data: consolidadoData,
-  } = useConsolidadoGeral()
-  const { data: ga4Data } = useGA4()
-  const { data: searchData } = useGoogleSearchData()
-  const { data: ga4LeadsData } = useGA4Leads()
+    ga4Data,
+    searchData,
+    ga4LeadsData,
+  } = useData()
 
   const [selectedMetric, setSelectedMetric] = useState<MetricType>("impressions")
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null)
@@ -889,8 +890,8 @@ const Capa: React.FC = () => {
           <div className="bg-white/95 backdrop-blur-sm rounded-xl p-4 shadow-lg max-w-2xl flex items-center gap-4">
             <img src="/images/LOGO_JETOUR.png" alt="Jetour" className="h-8 object-contain" />
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 leading-tight">Dashboard JETOUR</h1>
-              <p className="text-sm text-gray-600">Visão consolidada de campanhas e resultados</p>
+              <h1 className="text-2xl font-bold text-gray-900 leading-tight">Visão Digital</h1>
+              <p className="text-sm text-gray-600">Performance de campanhas online</p>
             </div>
             <div className="ml-auto">
               <img src="/images/W+E_logo.png" alt="W+E" className="h-7 object-contain opacity-70" />

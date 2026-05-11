@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState, useMemo } from "react"
 import { ChevronDown, ChevronUp, ChevronRight, FileText, Radio, TrendingUp, Megaphone, DollarSign } from "lucide-react"
-import { useOfflineData } from "../../services/api"
+import { useData } from "../../contexts/DataContext"
 import Loading from "../../components/Loading/Loading"
 
 // Interfaces para tipagem
@@ -131,7 +131,7 @@ const extrairMes = (inicio: string): string => {
 }
 
 const VeiculacaoOffline: React.FC = () => {
-  const { data, loading, error } = useOfflineData()
+  const { offlineData: data, loadingOffline: loading, error } = useData()
   const [expandedMeios, setExpandedMeios] = useState<{ [key: string]: boolean }>({})
   const [expandedPracas, setExpandedPracas] = useState<{ [key: string]: boolean }>({})
   const [expandedCampanha, setExpandedCampanha] = useState<string | null>(null)
@@ -344,7 +344,7 @@ const VeiculacaoOffline: React.FC = () => {
         <div className="flex items-center gap-3 mb-3 md:mb-0">
           <img src="/images/LOGO_JETOUR.png" alt="Jetour" className="h-7 object-contain" />
           <div>
-            <h1 className="text-lg font-bold text-gray-900 leading-tight">Off-line</h1>
+            <h1 className="text-lg font-bold text-gray-900 leading-tight">Visão Offline</h1>
             <p className="text-xs text-gray-500">Veiculação em mídias tradicionais</p>
           </div>
         </div>
